@@ -32,6 +32,10 @@ fn timeit<F, T>(_: &str, mut f: F) -> (T, Duration) where F: FnMut()-> T {
     (t, elapsed)
 }
 
+// 目前来看，group-aggregation 未能有效加速
+// TODO 待测试: Hash-Join SIMD 加速
+// TODO 待测试：Sorted-Join SIMD 加速
+// TODO 排序加速
 fn main() {
 
     // prepare 1B records
@@ -172,6 +176,8 @@ fn prepare_data() -> Orders {
     Orders{ order_id: order_ids, sku_id: sku_ids, amount: amounts }
 }
 
+// 1B 记录，filter 进行数据复制时，耗时 1360ms + 独立 group-aggregation 61ms = 1422ms
+// 1B 记录，filter 进行流式处理时，耗时 1405 (附加了 group-aggregation 操作)
 fn filter_data<F>(orders: &Orders, f: &mut F) where F: FnMut(u32, u32, f64) -> () {
     for i in 0..orders.order_id.len() {
         if orders.sku_id[i] % 1000 == 0 && orders.amount[i] > 20.0 {
@@ -180,6 +186,8 @@ fn filter_data<F>(orders: &Orders, f: &mut F) where F: FnMut(u32, u32, f64) -> (
     }
 }
 
+// 1B 记录，filter 进行数据复制时，耗时 530ms + 独立 group-aggregation 61ms = 591ms
+// 1B 记录，filter 进行流式处理时，耗时 495ms (附加了 group-aggregation 操作), filter 部分预计提升3倍+
 unsafe fn filter_simd<F>(orders: &Orders, f: &mut F) where F: FnMut(u32, u32, f64) -> () {
     let length = orders.order_id.len() & (!0x0F); // 16
 
@@ -217,7 +225,8 @@ fn group_data(orders: &Orders) -> std::collections::HashMap<u32, (f64, u32)> {
     for i in 0..orders.order_id.len() {
         let sku_id = orders.sku_id[i];
         let amount = orders.amount[i];
-        let entry = grouped.entry(sku_id).or_insert((0.0, 0));
+        let entry = grouped.entry(sku_id) // // 绝大部分时间都消耗在这里
+            .or_insert((0.0, 0));
         entry.0 += amount;
         entry.1 += 1;
     }
@@ -257,7 +266,7 @@ fn group_data_using_array(orders: &Orders) -> std::collections::HashMap<u32, (f6
 }
 
 
-// 未能有效向量化，速度比 simd 版本慢了 4 倍 M1Max
+// 未能有效向量化，1B 记录，耗时 937ms 速度比 simd 版本(260ms) 慢了 3.6 倍 M1Max
 fn aggregate_data(orders: &Orders) -> (f64, u32) {
     let mut total_amount = 0.0;
     let mut count = 0;
@@ -269,6 +278,7 @@ fn aggregate_data(orders: &Orders) -> (f64, u32) {
 }
 
 
+// 1G 数据，耗时 260ms
 fn aggregate_data_simd(orders: &Orders) -> (f64, u32) {
     let mut total_amount = 0.0;
     let mut count = 0;
