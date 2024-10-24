@@ -205,7 +205,7 @@ unsafe fn filter_simd<F>(orders: &Orders, f: &mut F) where F: FnMut(u32, u32, f6
         let b2 = Mask::from(amount.simd_gt(b));         // amount > 20.0
         let mut b = b1.bitand(b2);                      // combine the two masks
 
-        while let Some(idx) = b.first_set() {
+        while let Some(idx) = b.first_set() {                // 在 x86 上等效于 tzcnt 指令
             f(order_id[idx], sku_id[idx], amount[idx]);
             b.set(idx, false);
         }
@@ -287,8 +287,8 @@ fn aggregate_data_simd(orders: &Orders) -> (f64, u32) {
     for i in (0..length).step_by(16) {
         let amount= f64x16::from_slice(&orders.amount[i..]);
         let zero = f64x16::splat(0.0);
-        total_amount += amount.reduce_sum();
-        count += amount.simd_ne(zero).to_bitmask().count_ones();
+        total_amount += amount.reduce_sum();        // x86 上 reduce_sum 不支持向量化，还是多次累加
+        count += amount.simd_ne(zero).to_bitmask().count_ones(); // x86 有 popcnt 指令
     }
 
     for i in length..orders.order_id.len() {
