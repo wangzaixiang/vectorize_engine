@@ -31,8 +31,8 @@ struct Orders {
 fn main(){
     let rand_nums: Vec<u32> = (0..8).map( |_ | random::<u32>() ).collect();
 
+    let mut vec = u32x8::from_slice(&rand_nums);
     let (_, time1) =timeit("sort_u32x8", || for i in 0..1_000_000 {
-            let mut vec = u32x8::from_slice(&rand_nums);
             vec[0] = i;
             sort_u32x8(&mut vec);
          }
@@ -45,10 +45,8 @@ fn main(){
         vec2[0] = i;
         vec2.sort();
     });
-    // println!("vec = {:?}", vec);
-    // println!("vec2 = {:?}", vec2);
 
-    println!("time1 = {:?} time2 = {:?}", time1, time2);
+    println!("time1 = {:?} time2 = {:?} vec = {:?}, vec2 = {:?}", time1, time2, vec, vec2);
 
 }
 
