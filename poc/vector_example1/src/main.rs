@@ -11,10 +11,12 @@ use std::collections::HashMap;
 
 use std::f64;
 use std::ops::BitAnd;
-use std::simd::{f64x16, f64x8, mask8x16, u32x16, Mask};
+use std::simd::{f64x16, f64x8, mask8x16, u32x16, u32x8, Mask};
 use std::simd::cmp::{SimdPartialEq, SimdPartialOrd};
 use std::simd::num::SimdFloat;
-use std::time::Duration;
+use rand::random;
+use vector_example1::sort2::sort_u32x8;
+use vector_example1::timeit;
 // mod vector;
 
 
@@ -25,18 +27,36 @@ struct Orders {
     amount: Vec<f64>,
 }
 
-fn timeit<F, T>(_: &str, mut f: F) -> (T, Duration) where F: FnMut()-> T {
-    let start = std::time::Instant::now();
-    let t = f();
-    let elapsed = start.elapsed();
-    (t, elapsed)
+
+fn main(){
+    let rand_nums: Vec<u32> = (0..8).map( |_ | random::<u32>() ).collect();
+
+    let (_, time1) =timeit("sort_u32x8", || for i in 0..1_000_000 {
+            let mut vec = u32x8::from_slice(&rand_nums);
+            vec[0] = i;
+            sort_u32x8(&mut vec);
+         }
+    );
+
+    let mut vec2 = Vec::with_capacity(8);
+    let (_, time2) = timeit("simple sort", || for i in 0..1_000_000 {
+        vec2.clear();
+        vec2.extend_from_slice(&rand_nums);
+        vec2[0] = i;
+        vec2.sort();
+    });
+    // println!("vec = {:?}", vec);
+    // println!("vec2 = {:?}", vec2);
+
+    println!("time1 = {:?} time2 = {:?}", time1, time2);
+
 }
 
 // 目前来看，group-aggregation 未能有效加速
 // TODO 待测试: Hash-Join SIMD 加速
 // TODO 待测试：Sorted-Join SIMD 加速
 // TODO 排序加速
-fn main() {
+fn main0() {
 
     // prepare 1B records
     let (orders, _) = timeit("prepare_data", || prepare_data() );
