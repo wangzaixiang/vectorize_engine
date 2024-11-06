@@ -29,32 +29,6 @@ struct Orders {
 
 
 fn main(){
-    let rand_nums: Vec<u32> = (0..8).map( |_ | random::<u32>() ).collect();
-
-    let mut vec = u32x8::from_slice(&rand_nums);
-    let (_, time1) =timeit("sort_u32x8", || for i in 0..1_000_000 {
-            vec[0] = i;
-            sort_u32x8(&mut vec);
-         }
-    );
-
-    let mut vec2 = Vec::with_capacity(8);
-    let (_, time2) = timeit("simple sort", || for i in 0..1_000_000 {
-        vec2.clear();
-        vec2.extend_from_slice(&rand_nums);
-        vec2[0] = i;
-        vec2.sort();
-    });
-
-    println!("time1 = {:?} time2 = {:?} vec = {:?}, vec2 = {:?}", time1, time2, vec, vec2);
-
-}
-
-// 目前来看，group-aggregation 未能有效加速
-// TODO 待测试: Hash-Join SIMD 加速
-// TODO 待测试：Sorted-Join SIMD 加速
-// TODO 排序加速
-fn main0() {
 
     // prepare 1B records
     let (orders, _) = timeit("prepare_data", || prepare_data() );
@@ -163,6 +137,12 @@ fn main0() {
         {
             let label = "aggregate_data_simd";
             let (result, group_by_time) = timeit(label, || aggregate_data_simd(&orders) ) ;
+            println!("{label} {}ms, result = ({:?})", group_by_time.as_millis(), result);
+        }
+
+        {   // Test 9: aggregate_data_simd2
+            let label = "aggregate_data_simd2";
+            let (result, group_by_time) = timeit(label, || aggregate_data_simd2(&orders) ) ;
             println!("{label} {}ms, result = ({:?})", group_by_time.as_millis(), result);
         }
 
@@ -309,6 +289,33 @@ fn aggregate_data_simd(orders: &Orders) -> (f64, u32) {
         count += amount.simd_ne(zero).to_bitmask().count_ones(); // x86 有 popcnt 指令
     }
 
+    for i in length..orders.order_id.len() {
+        total_amount += orders.amount[i];
+        count += 1;
+    }
+    (total_amount, count)
+}
+
+fn aggregate_data_simd2(orders: &Orders) -> (f64, u32) {
+    let mut total_amount = 0.0;
+    let mut count = 0;
+
+    let length = orders.order_id.len() & (!0x0F); // 16 is better than 32, same as 8
+
+    let mut aggr1 = f64x16::splat(0.0);
+    // let mut aggr2 = f64x16::splat(0.0);
+    let zero = f64x16::splat(0.0);
+
+    for i in (0..length).step_by(16) {
+        let amount1= f64x16::from_slice(&orders.amount[i..]);
+        // let amount2= f64x16::from_slice(&orders.amount[i+16 ..]);
+        aggr1 = aggr1 + amount1;
+        // aggr2 = aggr2 + amount2;
+        count += amount1.simd_ne(zero).to_bitmask().count_ones(); // x86 有 popcnt 指令
+        // count += amount2.simd_ne(zero).to_bitmask().count_ones(); // x86 有 popcnt 指令
+    }
+
+    total_amount = aggr1.reduce_sum() ;
     for i in length..orders.order_id.len() {
         total_amount += orders.amount[i];
         count += 1;
