@@ -443,13 +443,20 @@ pub fn merge_sort_u32x16x2(p1: &mut u32x16, p2: &mut u32x16) {
     *p2 = max;
 }
 
-fn merge_sort(p1: &mut [u32], p2: &mut [u32], temp: &mut [u32]) {
+/// reqyire: temp.len() >= p1.len() / 2
+#[inline]
+pub fn merge_sort(p1: &mut [u32], p2: &mut [u32], temp: &mut [u32]) {
 
     let (mut i, mut j) = (0usize, 0usize);
-    // round 1
     let copy_size = p1.len().min(temp.len());
+
+    // round 1, merge p1[0..copy_size] and p2[0..] and output to p1, to avoid overlap, copy p1[0..copy_size] to temp first
     temp[0..copy_size].copy_from_slice(&p1[0..copy_size]);
-    let mut remain = merge_sort_round1(&temp[0..copy_size], &mut i, &p2[0..], &mut j, &mut p1[0..], copy_size);
+    let mut remain = unsafe {merge_sort_round1(&temp[0..copy_size], &mut i, &p2[0..], &mut j, &mut p1[0..], copy_size) };
+
+    // end round 1, may remains temp[i..copy_size] and p2[j..]
+    // then (temp[i..copy_size],  temp[0..i] = p1[copy_size..copy_size+i], p2[0..?] = p1[copy_size+i..]) and  p2[j..])
+    // and output to p1[copy_size..] and p2[0..]
 
     let len2 = p1.len() - copy_size ;
     let p1_1: &[u32];   // p1 second part, copy to temp
@@ -465,23 +472,48 @@ fn merge_sort(p1: &mut [u32], p2: &mut [u32], temp: &mut [u32]) {
         p1_1 = &temp[0..i];
         p1_2 = unsafe { &* (&p2[0..(len2-i)] as *const [u32]) };    // here p2 is immutable borrow which conflict with &mut p2[0..] but it is safe here
     }
+
+    // round 2
     let (mut idx1_0, mut idx1_1, mut idx1_2, mut idx2) = (0usize, 0usize, 0usize, 0usize);
     let p1_len = p1.len();
     let p2_len = p2.len();
     if p1_len > copy_size {
-        remain = merge_sort_round2(remain, &temp[i..copy_size], &mut idx1_0, &p1_1[0..], &mut idx1_1, &p1_2[0..], &mut idx1_2,
+        remain = unsafe { merge_sort_round2(remain, &temp[i..copy_size], &mut idx1_0, &p1_1[0..], &mut idx1_1, &p1_2[0..], &mut idx1_2,
                           &p2[j..], &mut idx2,
-                          &mut p1[copy_size..], p1_len - copy_size);
+                          &mut p1[copy_size..], p1_len - copy_size) };
     }
 
-    remain = merge_sort_round2(remain, &temp[i..copy_size], &mut idx1_0, &p1_1[0..], &mut idx1_1, &p1_2[0..], &mut idx1_2,
-                      unsafe { &*( &p2[j..] as *const [u32] ) }, &mut idx2,   // here p2 is immutable borrow which conflict with &mut p2[0..] but it is safe here
-                      &mut p2[0..], p2_len);
+
+    // round 3
+    remain = unsafe { merge_sort_round2(remain, &temp[i..copy_size], &mut idx1_0, &p1_1[0..], &mut idx1_1, &p1_2[0..], &mut idx1_2,
+                      &*( &p2[j..] as *const [u32] ), &mut idx2,   // here p2 is immutable borrow which conflict with &mut p2[0..] but it is safe here
+                      &mut p2[0..], p2_len) };
+
+    debug_assert_eq!(idx1_0, copy_size - i);
+    debug_assert_eq!(idx1_1, p1_1.len());
+    debug_assert_eq!(idx1_2, p1_2.len());
+    debug_assert_eq!(idx2, p2_len - j);
+
     p2[p2_len - 16..].copy_from_slice(remain.as_array());
 
 }
 
-fn merge_sort_round1(
+#[inline]
+fn write(out: &mut [u32], o: &mut usize, value: &u32x16) {
+    out[*o..*o+16].copy_from_slice( value.as_array() );
+    *o += 16;
+}
+
+#[inline]
+fn read(buf: &[u32], i: &mut usize) -> u32x16  {
+    let value = u32x16::from_slice(&buf[*i..]);
+    *i += 16;
+    value
+}
+
+/// merge sort from p1(sorted), p2(sorted) for count elements into out
+/// require: out\[0..count] will not overlap with p1, p2
+unsafe fn merge_sort_round1(
     p1: &[u32], i: &mut usize,
     p2: &[u32], j: &mut usize,
     out: &mut [u32], count: usize) -> u32x16
@@ -491,36 +523,27 @@ fn merge_sort_round1(
     debug_assert!(p1.len() % 16 == 0 && p2.len() % 16 == 0);
 
     let mut o = 0usize;
-    let mut min = u32x16::from_slice(&p1[*i..]);
-    let mut max = u32x16::from_slice(&p2[*j..]);
-    *i += 16;
-    *j += 16;
+    let mut min = read(p1, i); // u32x16::from_slice(&p1[*i..]);
+    let mut max = read(p2, j); //u32x16::from_slice(&p2[*j..]);
 
     loop {
         merge_sort_u32x16x2(&mut min, &mut max);
-        out[o..o+16].copy_from_slice( min.as_array() );
-        o += 16;
+        write(out, &mut o, &min);
 
         if o < count  { // load another
             if *i < p1.len() && *j < p2.len()  {
                 if p1[*i] < p2[*j] {
-                    min = u32x16::from_slice(&p1[*i..]);
-                    *i += 16;
+                    min = read(p1, i);
                 } else {
-                    min = u32x16::from_slice(&p2[*j..]);
-                    *j += 16;
+                    min  = read(p2, j);
                 }
             }
             else if *i < p1.len() {
-                min = u32x16::from_slice(&p1[*i..]);
-                *i += 16;
-            }
-            else if *j < p2.len() {
-                min = u32x16::from_slice(&p2[*j..]);
-                *j += 16;
+                min = read(p1, i);
             }
             else {
-                panic!("impossible");
+                debug_assert!( *j < p2.len() );
+                min = read(p2, j);
             }
         }
         else {
@@ -530,9 +553,8 @@ fn merge_sort_round1(
 
 }
 
-// TODO: 重构这个函数，消除重复代码
-
-fn merge_sort_round2(
+/// p1: p1_0 :: p1_1 :: p1_2
+unsafe fn merge_sort_round2(
     last: u32x16,
     p1_0: &[u32], idx1_0: &mut usize,
     p1_1: &[u32], idx1_1: &mut usize,
@@ -542,171 +564,82 @@ fn merge_sort_round2(
 {
 
     let mut max = last;
-    let mut min;
     let mut o = 0;
 
-    if *idx1_0 < p1_0.len() {
-       loop {
-           if *idx2 < p2.len() {
-               if p1_0[*idx1_0] < p2[*idx2] {
-                    min = u32x16::from_slice(&p1_0[*idx1_0..]);
-                   *idx1_0 += 16;
-               }
-               else {
-                   min = u32x16::from_slice(&p2[*idx2..]);
-                   *idx2 += 16;
-               }
-           }
-           else  {
-                min = u32x16::from_slice(&p1_0[*idx1_0..]);
-                *idx1_0 += 16;
-           }
-
-           merge_sort_u32x16x2(&mut min, &mut max);
-           out[o..o+16].copy_from_slice( min.as_array() );
-           o += 16;
-           if o >= count {
-               return max;
-           }
-           if *idx1_0 >= p1_0.len() {
-               break;
-           }
-       }
-    }
-    if *idx1_1 < p1_1.len() {
-        loop {
-            if *idx2 < p2.len() {
-                if p1_1[*idx1_1] < p2[*idx2] {
-                    min = u32x16::from_slice(&p1_1[*idx1_1..]);
-                    *idx1_1 += 16;
-                }
-                else {
-                    min = u32x16::from_slice(&p2[*idx2..]);
-                    *idx2 += 16;
-                }
-            }
-            else  {
-                min = u32x16::from_slice(&p1_1[*idx1_1..]);
-                *idx1_1 += 16;
-            }
-
-            merge_sort_u32x16x2(&mut min, &mut max);
-            out[o..o+16].copy_from_slice( min.as_array() );
-            o += 16;
-            if o >= count {
-                return max;
-            }
-            if *idx1_1 >= p1_1.len() {
-                break;
-            }
-        }
-    }
-    if *idx1_2 < p1_2.len() {
-        loop {
-            if *idx2 < p2.len() {
-                if p1_2[*idx1_2] < p2[*idx2] {
-                    min = u32x16::from_slice(&p1_1[*idx1_2..]);
-                    *idx1_2 += 16;
-                }
-                else {
-                    min = u32x16::from_slice(&p2[*idx2..]);
-                    *idx2 += 16;
-                }
-            }
-            else  {
-                min = u32x16::from_slice(&p1_0[*idx1_2..]);
-                *idx1_2 += 16;
-            }
-
-            merge_sort_u32x16x2(&mut min, &mut max);
-            out[o..o+16].copy_from_slice( min.as_array() );
-            o += 16;
-            if o >= count {
-                return max;
-            }
-            if *idx1_2 >= p1_2.len() {
-                break;
-            }
+    if *idx1_0 < p1_0.len() {  // merge p1_0 and p2
+        max = merge2_when_part1_non_empty(p1_0, idx1_0, p2, idx2, out, &mut o, count, &mut max);
+        if o >= count {
+            return max;
         }
     }
 
-    loop {  // only left p2
-        if *idx2 < p2.len() {
-            min = u32x16::from_slice(&p2[*idx2..]);
-            *idx2 += 16;
-        } else {
-            break;
+    if *idx1_1 < p1_1.len() {   // merge p1_1 and p2
+        max = merge2_when_part1_non_empty(p1_1, idx1_1, p2, idx2, out, &mut o, count, &mut max);
+        if o >= count {
+            return max;
         }
+    }
 
-        merge_sort_u32x16x2(&mut min, &mut max);
-        out[o..o + 16].copy_from_slice(min.as_array());
-        o += 16;
+    if *idx1_2 < p1_2.len() {  // merge p1_2 and p2
+        max = merge2_when_part1_non_empty(p1_2, idx1_2, p2, idx2, out, &mut o, count, &mut max);
+        if o >= count {
+            return max;
+        }
+    }
+
+    if *idx2 < p2.len() {  // p2 still non empy
+        max = merge2_when_part1_non_empty(p2, idx2, &[], &mut 0, out, &mut o, count, &mut max);
+        if o >= count {
+            return max;
+        }
     }
 
     max
 }
 
+/// require idx1 < p1.len()
+unsafe fn merge2_when_part1_non_empty(p1: &[u32], idx1: &mut usize, p2: &[u32], idx2: &mut usize,
+                                      out: &mut [u32], mut o: &mut usize, count: usize,
+                                      remain: &u32x16) -> u32x16 {
+    let mut max = *remain;
+    loop {
+        let mut min;
+        if *idx2 < p2.len() {   // use p1 & p2
+            if p1[*idx1] < p2[*idx2] {
+                min = read(p1, idx1);
+            } else {
+                min = read(p2, idx2);
+            }
+        } else {    // no p2
+            min = read(p1, idx1);
+        }
 
-/*
-#[test]
-fn test_merge_sort1(){
-
-    // let mut p1: Vec<u32> = (100..132).collect();
-    // let mut p2: Vec<u32> = (0..48).collect();
-
-    // let mut p1: Vec<u32> = (100..116).collect();
-    // let mut p2: Vec<u32> = (0..48).collect();
-
-    // let mut p1: Vec<u32> = (0..48).collect();
-    // let mut p2: Vec<u32> = (100..132).collect();
-
-    // let mut p1: Vec<u32> = (0..48).collect();
-    // let mut p2: Vec<u32> = (100..116).collect();
-
-    // let mut p1 = vec! [30, 41, 101, 103, 118, 134, 136, 143, 152, 164, 173, 209, 218, 222, 228, 237, 265, 282, 291, 304, 309, 350, 388, 394, 398, 427, 462, 480, 481, 543, 605, 614, 622, 634, 652, 654, 673, 676, 677, 684, 758, 760, 799, 803, 818, 832, 833, 841, 851, 857, 865, 870, 871, 872, 883, 888, 891, 902, 908, 927, 930, 960, 964, 974];
-    // let mut p2 = vec! [11, 12, 24, 117, 118, 146, 155, 202, 248, 254, 371, 451, 470, 484, 529, 563, 566, 599, 605, 607, 618, 678, 688, 700, 704, 737, 753, 763, 773, 825, 965, 993];
-
-    let mut p1 = vec! [13, 113, 114, 155, 341, 387, 481, 510, 581, 661, 742, 764, 772, 817, 860, 900];
-    let mut p2 = vec! [11, 27, 30, 50, 68, 110, 115, 123, 186, 248, 296, 302, 302, 305, 347, 348, 356, 380, 398, 441, 454, 475, 589, 599, 645, 646, 669, 701, 741, 870, 946, 947];
-
-
-
-    let mut all = Vec::with_capacity(p1.len() + p2.len() );
-    all.extend_from_slice(&p1);
-    all.extend_from_slice(&p2);
-
-    p1.sort();
-    p2.sort();
-    all.sort();
-    let temp_size = ((p1.len() / 16 + p2.len() / 16) + 1) / 2 * 16;
-    let mut temp = vec![0u32; temp_size];
-
-    merge_sort(&mut p1, &mut p2, &mut temp);
-
-    println!("p1: {:?}", p1);
-    println!("p2: {:?}", p2);
-
-    assert_eq!(p1, &all[0..p1.len()]);
-    assert_eq!(p2, &all[p1.len()..]);
-
+        merge_sort_u32x16x2(&mut min, &mut max);
+        write(out, &mut o, &min);
+        if *o >= count {
+            break max;
+        }
+        if *idx1 >= p1.len() {  // part1 complete, try the next by caller.
+            break max;
+        }
+    }
 }
-*/
 
 
 #[test]
 fn test_merge_sort(){
 
     for _ in 0..1024*16 {
-        let len1 = (random::<u32>() % 256 + 1) as usize * 16;
-        let len2= (random::<u32>() % 256  + 1)  as usize * 16;
+        let len1 = (random::<u32>() % 512 + 1) as usize * 16;
+        let len2= (random::<u32>() % 512 + 1)  as usize * 16;
 
         let p1: Vec<u32>= {
-            let mut v: Vec<u32>= (0..len1).map(|_| random::<u32>() % 1_000).collect();
+            let mut v: Vec<u32>= (0..len1).map(|_| random::<u32>() % 1_000_000).collect();
             v.sort();
             v
         };
         let p2: Vec<u32>= {
-            let mut v: Vec<u32> = (0..len2).map( |_| random::<u32>() % 1_000 ).collect();
+            let mut v: Vec<u32> = (0..len2).map( |_| random::<u32>() % 1_000_000 ).collect();
             v.sort();
             v
         };
