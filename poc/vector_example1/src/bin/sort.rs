@@ -3,6 +3,9 @@
 use std::fmt::Display;
 use std::simd::{u32x16, u32x4, u32x8};
 use std::simd::cmp::SimdOrd;
+use rand::random;
+use vector_example1::sort2::{debug_print, sort};
+use vector_example1::timeit;
 
 fn main() {
 
@@ -413,4 +416,30 @@ fn test_merge_sort() {
         println!("a1 = {:?}\na2 = {:?}\n", a1, a2);
     }
 
+}
+
+#[test]
+fn test_sort(){
+
+    for len in 1..1000 {
+
+        for _ in 0..2 {    // each len test 64 times
+            let LEN: usize = 16 * len;
+            let vec: Vec<u32> = (0..LEN).map(|_| random::<u32>() % 1_000_000).collect();
+            let mut expected = vec.clone();
+            expected.sort();
+
+            let mut result = vec.clone();
+            sort(&mut result);
+
+            if result != expected {
+                println!("vec = {:?}", vec);
+                debug_print("vec", &vec);
+                debug_print("result", &result);
+                debug_print("expect", &expected);
+            }
+            assert_eq!(result, expected);
+
+        }
+    }
 }

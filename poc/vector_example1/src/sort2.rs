@@ -1,6 +1,5 @@
-use std::simd::cmp::SimdOrd;
+use std::simd::cmp::{SimdOrd};
 use std::simd::{simd_swizzle, u32x16, u32x32, u32x4, u32x8 };
-use rand::random;
 
 #[test]
 fn test_sort_u32x8() {
@@ -15,6 +14,7 @@ fn test_sort_u32x8() {
 
 #[test]
 fn test_sort_u32x16() {
+    use rand::random;
 
     for _ in 0..1024 {
         let mut nums: Vec<u32> = (0..16).map( |_| random::<u32>() % 1000 ).collect();
@@ -31,7 +31,7 @@ fn test_sort_u32x16() {
 fn test_sort_u32x32() {
 
     for _ in 0..1024 {
-        let mut nums: Vec<u32> = (0..32).map( |_| random::<u32>() % 1000 ).collect();
+        let mut nums: Vec<u32> = (0..32).map( |_| rand::random::<u32>() % 1000 ).collect();
         let mut simd = u32x32::from_slice(&nums);
         sort_u32x32(&mut simd);
 
@@ -41,11 +41,41 @@ fn test_sort_u32x32() {
 
 }
 
+
+#[test]
+fn test_merge_sort_u32x16x2(){
+    for _ in 0..1024 {
+        let mut vec1: Vec<u32> = (0..16).map(|_| rand::random::<u32>() % 100).collect();
+        let mut vec2: Vec<u32> = (0..16).map(|_| rand::random::<u32>() % 100).collect();
+        vec1.sort();
+        vec2.sort();
+
+        let mut expected = Vec::new();
+        expected.extend_from_slice(&vec1);
+        expected.extend_from_slice(&vec2);
+        expected.sort();
+
+        let mut num1 = u32x16::from_slice(&vec1);
+        let mut num2 = u32x16::from_slice(&vec2);
+        merge_sort_u32x16x2(&mut num1, &mut num2);
+
+        if num1.as_array() == &expected[..16] && num2.as_array() == &expected[16..] {
+
+        }
+        else {
+            println!("problem: vec1 = {:?}, vec2 = {:?}", vec1, vec2);
+        }
+
+        assert_eq!(num1.as_array() as &[u32], &expected[..16]);
+        assert_eq!(num2.as_array() as &[u32], &expected[16..]);
+    }
+}
+
 #[test]
 fn test_random(){
 
-    let mut v1: Vec<u32> = (0..8).map (|_| random::<u32>() % 100).collect();
-    let mut v2: Vec<u32> = (0..8).map (|_| random::<u32>() % 100).collect();
+    let mut v1: Vec<u32> = (0..8).map (|_| rand::random::<u32>() % 100).collect();
+    let mut v2: Vec<u32> = (0..8).map (|_| rand::random::<u32>() % 100).collect();
     v1.sort();
     v2.sort();
 
@@ -239,7 +269,7 @@ pub fn sort_u32x16(nums: &mut u32x16) {
 }
 
 
-#[inline]
+#[inline(always)]
 pub fn sort_u32x32(nums: &mut u32x32) {
     let a: u32x16 = u32x16::from_slice(&nums[0..16]);
     let b: u32x16 = u32x16::from_slice(&nums[16..32]);
@@ -356,9 +386,9 @@ pub fn sort_u32x32(nums: &mut u32x32) {
 }
 
 
-#[inline]
+#[inline(always)]
 pub fn merge_sort_u32x16x2(p1: &mut u32x16, p2: &mut u32x16) {
-    let min= p1.simd_min(*p2);
+    let min = p1.simd_min(*p2);
     let max = p1.simd_max(*p2);
 
     // round 1
@@ -443,231 +473,215 @@ pub fn merge_sort_u32x16x2(p1: &mut u32x16, p2: &mut u32x16) {
     *p2 = max;
 }
 
-/// reqyire: temp.len() >= p1.len() / 2
-#[inline]
-pub fn merge_sort(p1: &mut [u32], p2: &mut [u32], temp: &mut [u32]) {
-
-    let (mut i, mut j) = (0usize, 0usize);
-    let copy_size = p1.len().min(temp.len());
-
-    // round 1, merge p1[0..copy_size] and p2[0..] and output to p1, to avoid overlap, copy p1[0..copy_size] to temp first
-    temp[0..copy_size].copy_from_slice(&p1[0..copy_size]);
-    let mut remain = unsafe {merge_sort_round1(&temp[0..copy_size], &mut i, &p2[0..], &mut j, &mut p1[0..], copy_size) };
-
-    // end round 1, may remains temp[i..copy_size] and p2[j..]
-    // then (temp[i..copy_size],  temp[0..i] = p1[copy_size..copy_size+i], p2[0..?] = p1[copy_size+i..]) and  p2[j..])
-    // and output to p1[copy_size..] and p2[0..]
-
-    let len2 = p1.len() - copy_size ;
-    let p1_1: &[u32];   // p1 second part, copy to temp
-    let p1_2: &[u32];   // p1 third part, copy to p2's first area
-    if len2 <= i {
-        temp[0..len2].copy_from_slice(&p1[copy_size..]);
-        p1_1 = &temp[0..len2];
-        p1_2 = &[];
-    }
-    else {
-        temp[0..i].copy_from_slice(&p1[copy_size..copy_size+i]);
-        p2[0..(len2-i)].copy_from_slice(&p1[copy_size+i..]);
-        p1_1 = &temp[0..i];
-        p1_2 = unsafe { &* (&p2[0..(len2-i)] as *const [u32]) };    // here p2 is immutable borrow which conflict with &mut p2[0..] but it is safe here
-    }
-
-    // round 2
-    let (mut idx1_0, mut idx1_1, mut idx1_2, mut idx2) = (0usize, 0usize, 0usize, 0usize);
-    let p1_len = p1.len();
-    let p2_len = p2.len();
-    if p1_len > copy_size {
-        remain = unsafe { merge_sort_round2(remain, &temp[i..copy_size], &mut idx1_0, &p1_1[0..], &mut idx1_1, &p1_2[0..], &mut idx1_2,
-                          &p2[j..], &mut idx2,
-                          &mut p1[copy_size..], p1_len - copy_size) };
-    }
-
-
-    // round 3
-    remain = unsafe { merge_sort_round2(remain, &temp[i..copy_size], &mut idx1_0, &p1_1[0..], &mut idx1_1, &p1_2[0..], &mut idx1_2,
-                      &*( &p2[j..] as *const [u32] ), &mut idx2,   // here p2 is immutable borrow which conflict with &mut p2[0..] but it is safe here
-                      &mut p2[0..], p2_len) };
-
-    debug_assert_eq!(idx1_0, copy_size - i);
-    debug_assert_eq!(idx1_1, p1_1.len());
-    debug_assert_eq!(idx1_2, p1_2.len());
-    debug_assert_eq!(idx2, p2_len - j);
-
-    p2[p2_len - 16..].copy_from_slice(remain.as_array());
-
-}
-
-#[inline]
+#[inline(always)]
 fn write(out: &mut [u32], o: &mut usize, value: &u32x16) {
     out[*o..*o+16].copy_from_slice( value.as_array() );
     *o += 16;
 }
 
-#[inline]
+#[inline(always)]
 fn read(buf: &[u32], i: &mut usize) -> u32x16  {
     let value = u32x16::from_slice(&buf[*i..]);
     *i += 16;
     value
 }
 
-/// merge sort from p1(sorted), p2(sorted) for count elements into out
-/// require: out\[0..count] will not overlap with p1, p2
-unsafe fn merge_sort_round1(
-    p1: &[u32], i: &mut usize,
-    p2: &[u32], j: &mut usize,
-    out: &mut [u32], count: usize) -> u32x16
-{
-    debug_assert!(count > 0);
-    debug_assert!(p1.len() > 0 && p2.len() > 0);
-    debug_assert!(p1.len() % 16 == 0 && p2.len() % 16 == 0);
 
-    let mut o = 0usize;
-    let mut min = read(p1, i); // u32x16::from_slice(&p1[*i..]);
-    let mut max = read(p2, j); //u32x16::from_slice(&p2[*j..]);
+pub fn sort(nums: &mut [u32]) {
 
-    loop {
-        merge_sort_u32x16x2(&mut min, &mut max);
-        write(out, &mut o, &min);
+    debug_assert!(nums.len() % 16 == 0);
 
-        if o < count  { // load another
-            if *i < p1.len() && *j < p2.len()  {
-                if p1[*i] < p2[*j] {
-                    min = read(p1, i);
-                } else {
-                    min  = read(p2, j);
-                }
-            }
-            else if *i < p1.len() {
-                min = read(p1, i);
-            }
-            else {
-                debug_assert!( *j < p2.len() );
-                min = read(p2, j);
-            }
+    if nums.len() == 16 {
+        sort_u32x16(unsafe { &mut *(nums as *mut [u32] as *mut u32x16) });
+        return ;
+    }
+    else if nums.len() == 32 {
+        sort_u32x32(unsafe { &mut *(nums as *mut [u32] as *mut u32x32) });
+        return ;
+    }
+
+    let len1 = (nums.len()/16 + 1) / 2 * 16;   debug_assert!(len1 % 16 == 0);
+
+    let mut temp: Vec<u32> = vec![0; len1]; // nums.len() / 2
+
+    let p1: &mut[u32] = unsafe {  &mut*( &mut nums[..len1] as *mut [u32])  }; // &mut nums[0..len1];
+    let p2: &mut[u32] = unsafe {  &mut*( &mut nums[len1..] as *mut [u32])  };
+
+
+    sort_round1(p1, &mut temp, true);
+    {
+        let temp = &mut p1[0..p2.len()];
+        sort_round1(p2, temp, false);
+    }
+
+    merge_sort_2(&temp, p2, nums);
+}
+
+#[inline]
+fn sort_round1( nums: &mut[u32], temp: &mut[u32], swap: bool) {
+    debug_assert!(nums.len() <= temp.len());
+    debug_assert!(nums.len() % 16 == 0);
+
+    if nums.len() == 16 {
+        debug_assert_eq!(swap, false);
+        sort_u32x16(unsafe { &mut *(nums as *mut [u32] as *mut u32x16) });
+        return;
+    } else if nums.len() == 32 {
+        sort_u32x32(unsafe { &mut *(nums as *mut [u32] as *mut u32x32) });
+        if swap {
+            temp.copy_from_slice(nums);
+        }
+        return;
+    }
+
+    let simds = nums.len() / 16;
+
+    let order = {
+        let msb = 63 - simds.leading_zeros() as u32;
+        let lsb = simds.trailing_zeros();
+        if lsb == msb {
+            msb
+        } else {
+            msb + 1
+        }
+    };
+
+    // 2^0  2^2
+    // 2^1  2^3
+    let need_swap_first = if order % 2 == 0 { swap } else { !swap };
+
+    let (mut current, mut next): (&mut [u32], &mut[u32]) = (nums, temp);
+    let end = simds / 2 * 2;
+    for i in (0..end).step_by(2) {
+        let p1: &mut u32x32 = unsafe { &mut *(&mut current[i * 16] as *mut u32 as *mut u32x32) };
+        sort_u32x32(p1);
+        if !need_swap_first {
+            next[i * 16.. i * 16 + 32].copy_from_slice(p1.as_array());
+        }
+    }
+    if end * 16 < current.len() {
+        sort_u32x16(unsafe { &mut *(&mut current[end * 16..] as *mut [u32] as *mut u32x16) });
+        if !need_swap_first {
+            next[end * 16..].copy_from_slice(&current[end * 16..]);
+        }
+    }
+    if !need_swap_first {
+        (current, next) = (next, current);
+    }
+
+    let mut level = 1;      // now 2^1 is sorted
+
+    while level < order {
+        // sort current into next 2^level + 2^level -> 2^(level+1)
+        let len1 = 1 << level;
+        let len2 = len1 * 2;
+        let end = simds >> (level + 1) << (level + 1);
+        for i in (0..end).step_by(len2) {
+            let off0 = i * 16;
+            let off1 = off0 + len1 * 16;
+            let off2 = off1 + len1 * 16;
+            let p1 = unsafe {  &mut *(&mut current[ off0.. off1] as *mut [u32] ) }; // &mut current[i * len1 * 2 .. i * len1 * 2 + len1];
+            let p2 = unsafe {  &mut *(&mut current[ off1.. off2] as *mut [u32] ) }; // &mut current[i * len1 * 2 .. i * len1 * 2 + len1];
+            merge_sort_2(p1, p2, &mut next[off0.. off2]);
+        }
+        // process end part, 0..len1, len1, len1..len1*2
+        let remains = &mut current[end * 16..];
+        if remains.len() > len1 * 16 {
+            let p1 = unsafe {  &mut *(&mut remains[0.. len1*16] as *mut [u32] ) }; // &mut current[i * len1 * 2 .. i * len1 * 2 + len1];
+            let p2 = unsafe {  &mut *(&mut remains[len1*16.. ] as *mut [u32] ) }; // &mut current[i * len1 * 2 .. i * len1 * 2 + len1];
+
+            merge_sort_2(p1 ,p2, &mut next[end*16 ..]);
         }
         else {
-            break max;
+            next[end*16..].copy_from_slice(remains);
         }
+        (current, next) = (next, current);
+        level += 1;
     }
 
 }
 
-/// p1: p1_0 :: p1_1 :: p1_2
-unsafe fn merge_sort_round2(
-    last: u32x16,
-    p1_0: &[u32], idx1_0: &mut usize,
-    p1_1: &[u32], idx1_1: &mut usize,
-    p1_2: &[u32], idx1_2: &mut usize,
-    p2: &[u32], idx2: &mut usize,
-    out: &mut [u32], count: usize) -> u32x16
-{
 
-    let mut max = last;
-    let mut o = 0;
-
-    if *idx1_0 < p1_0.len() {  // merge p1_0 and p2
-        max = merge2_when_part1_non_empty(p1_0, idx1_0, p2, idx2, out, &mut o, count, &mut max);
-        if o >= count {
-            return max;
-        }
+#[inline(always)]
+fn merge_sort_2(p1: &[u32], p2: &[u32], out: &mut[u32]) {
+    if p1.len() == 0 {
+        debug_assert!(p2.len() > 0);
     }
+    debug_assert!(p1.len() > 0 && p1.len() % 16 == 0);
+    debug_assert!(p2.len() > 0 && p2.len() % 16 == 0);
+    debug_assert_eq!(p1.len() + p2.len(), out.len());
 
-    if *idx1_1 < p1_1.len() {   // merge p1_1 and p2
-        max = merge2_when_part1_non_empty(p1_1, idx1_1, p2, idx2, out, &mut o, count, &mut max);
-        if o >= count {
-            return max;
-        }
+    if p1[p1.len()-1] <= p2[0] {
+        out[0..p1.len()].copy_from_slice(p1);
+        out[p1.len()..].copy_from_slice(p2);
+        return;
     }
+    let (mut i, mut j, mut o) = (0usize, 0usize, 0usize);
+    let mut min = read(p1, &mut i);
+    let mut max = read(p2, &mut j);
 
-    if *idx1_2 < p1_2.len() {  // merge p1_2 and p2
-        max = merge2_when_part1_non_empty(p1_2, idx1_2, p2, idx2, out, &mut o, count, &mut max);
-        if o >= count {
-            return max;
-        }
-    }
-
-    if *idx2 < p2.len() {  // p2 still non empy
-        max = merge2_when_part1_non_empty(p2, idx2, &[], &mut 0, out, &mut o, count, &mut max);
-        if o >= count {
-            return max;
-        }
-    }
-
-    max
-}
-
-/// require idx1 < p1.len()
-unsafe fn merge2_when_part1_non_empty(p1: &[u32], idx1: &mut usize, p2: &[u32], idx2: &mut usize,
-                                      out: &mut [u32], mut o: &mut usize, count: usize,
-                                      remain: &u32x16) -> u32x16 {
-    let mut max = *remain;
     loop {
-        let mut min;
-        if *idx2 < p2.len() {   // use p1 & p2
-            if p1[*idx1] < p2[*idx2] {
-                min = read(p1, idx1);
-            } else {
-                min = read(p2, idx2);
-            }
-        } else {    // no p2
-            min = read(p1, idx1);
-        }
-
         merge_sort_u32x16x2(&mut min, &mut max);
         write(out, &mut o, &min);
-        if *o >= count {
-            break max;
+
+        if i < p1.len() && j < p2.len() {
+            if p1[i] < p2[j] {
+                min = read(p1, &mut i);
+            } else {
+                min = read(p2, &mut j);
+            }
         }
-        if *idx1 >= p1.len() {  // part1 complete, try the next by caller.
-            break max;
+        else if i < p1.len() {
+            min = read(p1, &mut i);
+        }
+        else if j < p2.len() {
+            min = read(p2, &mut j);
+        }
+        else {
+            break;
         }
     }
+
+    write(out, &mut o, &max);
 }
 
+pub fn debug_print(label: &str, v: &[u32]){
+
+    println!("{:10}",  label);
+    for i in (0..v.len()).step_by(16) {
+        print!("\t");
+        for j in i..i+16 {
+            print!("{:4} ", v[j]);
+        }
+        println!();
+    }
+    println!("\n");
+}
 
 #[test]
-fn test_merge_sort(){
+fn test_drift_sort(){
 
-    for _ in 0..1024*16 {
-        let len1 = (random::<u32>() % 512 + 1) as usize * 16;
-        let len2= (random::<u32>() % 512 + 1)  as usize * 16;
+    let mut numbers: Vec<u32> = (0..100).map(|_| rand::random::<u32>() % 100).collect();
 
-        let p1: Vec<u32>= {
-            let mut v: Vec<u32>= (0..len1).map(|_| random::<u32>() % 1_000_000).collect();
-            v.sort();
-            v
-        };
-        let p2: Vec<u32>= {
-            let mut v: Vec<u32> = (0..len2).map( |_| random::<u32>() % 1_000_000 ).collect();
-            v.sort();
-            v
-        };
-        let expected: Vec<u32> = {
-            let mut v: Vec<u32> = Vec::with_capacity((len1 + len2) as usize);
-            v.extend_from_slice(&p1);
-            v.extend_from_slice(&p2);
-            v.sort();
-            v
-        };
-
-        let mut p1_copy = p1.clone();
-        let mut p2_copy = p2.clone();
-        p1_copy.sort();
-        p2_copy.sort();
-        let temp_len = (len1/16 + len2/16 +1) / 2 * 16;
-        let mut temp = vec![0u32; temp_len];
-
-        merge_sort(&mut p1_copy, &mut p2_copy, &mut temp);
-
-        if p1_copy != expected[0..len1] || p2_copy != expected[len1 .. ]{
-            println!("p1: {:?}", p1);
-            println!("p2: {:?}", p2);
-            println!()
-        }
-
-        assert_eq!(&p1_copy, &expected[0 .. len1]);
-        assert_eq!(&p2_copy, &expected[len1 .. ]);
-    }
+    numbers.sort();
 
 }
+
+#[test]
+fn test_sort(){
+    use std::hint::black_box;
+
+    for order in 0..15 {
+        let (_rust, _simd) = (0u64, 0u64);
+        let len: usize = 32 << order;  // 32, 64 .. 2^20
+
+        let vec: Vec<u32> = (0..len).map(|_| rand::random::<u32>()).collect();
+        let mut expected = black_box(&vec).clone();
+        expected.sort();
+
+        let mut vec = black_box(&vec).clone();
+        sort(black_box(&mut vec));
+        assert_eq!(vec, expected);
+    }
+}
+
