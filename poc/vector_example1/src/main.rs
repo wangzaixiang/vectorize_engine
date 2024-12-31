@@ -216,7 +216,8 @@ unsafe fn filter_simd<F>(orders: &Orders, f: &mut F) where F: FnMut(u32, u32, f6
 }
 
 // 基于 hashmap 的 group-by，在 1B 记录上，耗时为 7.4s，比 array 版本慢了 7倍。
-fn group_data(orders: &Orders) -> std::collections::HashMap<u32, (f64, u32)> {
+/// return a hashmap of sku_id -> (total_amount, count)
+fn group_data(orders: &Orders) -> HashMap<u32, (f64, u32)> {
     assert!(orders.sku_id.len() == orders.order_id.len());
     assert!(orders.amount.len() == orders.order_id.len());
     let mut grouped = HashMap::new();
@@ -265,18 +266,22 @@ fn group_data_using_array(orders: &Orders) -> std::collections::HashMap<u32, (f6
 
 
 // 未能有效向量化，1B 记录，耗时 937ms 速度比 simd 版本(260ms) 慢了 3.6 倍 M1Max
+#[inline(never)]
 fn aggregate_data(orders: &Orders) -> (f64, u32) {
     let mut total_amount = 0.0;
     let mut count = 0;
     for i in 0..orders.order_id.len() {
         total_amount += orders.amount[i];
-        count += 1;
+        if orders.amount[i] != 0.0 {
+            count += 1;
+        }
     }
     (total_amount, count)
 }
 
 
 // 1G 数据，耗时 260ms
+#[inline(never)]
 fn aggregate_data_simd(orders: &Orders) -> (f64, u32) {
     let mut total_amount = 0.0;
     let mut count = 0;
@@ -296,6 +301,7 @@ fn aggregate_data_simd(orders: &Orders) -> (f64, u32) {
     (total_amount, count)
 }
 
+#[inline(never)]
 fn aggregate_data_simd2(orders: &Orders) -> (f64, u32) {
     let mut total_amount = 0.0;
     let mut count = 0;
