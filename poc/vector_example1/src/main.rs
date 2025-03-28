@@ -11,9 +11,9 @@ use std::collections::HashMap;
 
 use std::f64;
 use std::ops::BitAnd;
-use std::simd::{f64x16, f64x8, mask8x16, u32x16, u32x8, Mask};
+use std::simd::{f64x16, f64x8, i64x16, mask8x16, u32x16, u32x8, u64x16, Mask};
 use std::simd::cmp::{SimdPartialEq, SimdPartialOrd};
-use std::simd::num::SimdFloat;
+use std::simd::num::{SimdFloat, SimdInt, SimdUint};
 use rand::random;
 use vector_example1::sort2::sort_u32x8;
 use vector_example1::timeit;
@@ -290,13 +290,15 @@ fn aggregate_data_simd(orders: &Orders) -> (f64, u32) {
     for i in (0..length).step_by(16) {
         let amount= f64x16::from_slice(&orders.amount[i..]);
         let zero = f64x16::splat(0.0);
-        total_amount += amount.reduce_sum();        // x86 上 reduce_sum 不支持向量化，还是多次累加
-        count += amount.simd_ne(zero).to_bitmask().count_ones(); // x86 有 popcnt 指令
+        total_amount += amount.reduce_sum();        // x86/arm 上 reduce_sum 不支持向量化，还是多次累加
+        count += amount.simd_ne(zero).to_bitmask().count_ones(); // x86 有 popcnt 指令，arm 没有popcnt指令，但需要 target-feature=+popcnt
     }
 
     for i in length..orders.order_id.len() {
         total_amount += orders.amount[i];
-        count += 1;
+        if orders.amount[i] != 0.0 {
+            count += 1;
+        }
     }
     (total_amount, count)
 }
@@ -309,22 +311,24 @@ fn aggregate_data_simd2(orders: &Orders) -> (f64, u32) {
     let length = orders.order_id.len() & (!0x0F); // 16 is better than 32, same as 8
 
     let mut aggr1 = f64x16::splat(0.0);
-    // let mut aggr2 = f64x16::splat(0.0);
+    let mut count_aggr = i64x16::splat(0);
     let zero = f64x16::splat(0.0);
 
     for i in (0..length).step_by(16) {
         let amount1= f64x16::from_slice(&orders.amount[i..]);
-        // let amount2= f64x16::from_slice(&orders.amount[i+16 ..]);
         aggr1 = aggr1 + amount1;
-        // aggr2 = aggr2 + amount2;
-        count += amount1.simd_ne(zero).to_bitmask().count_ones(); // x86 有 popcnt 指令
-        // count += amount2.simd_ne(zero).to_bitmask().count_ones(); // x86 有 popcnt 指令
+        count_aggr = count_aggr + amount1.simd_ne(zero).select(i64x16::splat(1), i64x16::splat(0))
+        // count += amount1.simd_ne(zero).to_bitmask().count_ones(); // x86 有 popcnt 指令
     }
 
     total_amount = aggr1.reduce_sum() ;
+    count = count_aggr.reduce_sum() as u32;
+
     for i in length..orders.order_id.len() {
         total_amount += orders.amount[i];
-        count += 1;
+        if orders.amount[i] != 0.0 {
+            count += 1;
+        }
     }
     (total_amount, count)
 }
