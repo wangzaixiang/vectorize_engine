@@ -232,7 +232,7 @@ let pipeline2 = pipeline(
 let graph = topology(main = pipeline2);
 ```
 
-# 示例4 
+## 示例4 
 ```sql
 -- table: order_item(order_item_id, order_date, user_id, product_id, quantity, amount)
 -- table: users(user_id, name, sex, province, city)
