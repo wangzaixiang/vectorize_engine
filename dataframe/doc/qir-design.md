@@ -1,14 +1,65 @@
-qp 是新设计的一种用于描述关系代数查询的中间语言，SQL 查询可以翻译称为 qp 代码，然后再解释或者编译执行。
+QIR 是一种用于描述关系代数查询的中间语言，SQL 查询可以翻译称为 qir 代码，然后再解释或者编译执行。
 
-# 示例
-## 示例一
+# Overview
+## What is QIR
+QIR (Query Intermediate Representation) 是一种用于描述数据查询的中间表示语言，类似于 SQL 查询的查询计划）。它具有以下特点：
+
+1. 基于关系代数
+   - QIR 使用关系代数算子(如 scan、filter、join、aggregation 等)来描述数据处理逻辑
+   - 每个算子都有明确定义的输入和输出类型
+   - 支持复杂的数据处理操作，如 join、group by、window functions 等
+2. AST based
+   - QIR 是一种 AST (Abstract Syntax Tree) 表示，而非 bytecode
+   - QIR 是函数式的。
+
+3. 类型安全
+   - QIR 提供了表结构类型定义，用于类型检查，并且便于JIT优化，减少运行时的检查开销。
+   - 每个算子的输入输出类型在编译时进行检查
+   - 可以及早发现类型错误，提高代码质量
+
+4. 流水线式处理
+   - QIR 使用 pipeline 来组织算子
+   - 支持多个 pipeline 之间的依赖关系
+   - 便于进行并行化和分布式处理
+
+QIR 的定位类似于 [MonetDB 中的 MAL 语言](https://www.monetdb.org/documentation-Mar2025/dev-guide/monetdb-internals/mal_reference/)，或者 [Sqlite 中的 bytecode](https://sqlite.org/opcode.html).
+
+## Why QIR
+1. 可以直接生成、编写 QIR 代码并执行。
+2. SQL 查询扩展查询算子较为复杂。QIR 目标是提供更方面的扩展算子能力。
+3. 更敏捷的新算子开发、测试流程
+   - 实现新的算子、策略。
+   - 手动编写 QIR 代码
+   - 进行 JIT 优化
+   - 达到预期效果后，再改进 Planner 支持新算子（以终为始）
+4. 性能优化的实验场
+   - 丰富的 Join 算法支持: semi join， anti-semi join， as of join
+   - 窗口函数扩展：range between expr and expr
+   - 窗口函数扩展：over(partition by expr order by expr where expr)
+   - minmax 索引优化
+   - bloom 索引优化
+   - 分区、分桶查询优化（对Join的支持）
+   - profile based optimization
+   - vectorized execution. QIR 基于 arrow 数据结构，以向量化的方式进行数据处理
+   - JIT: QIR 更便于 JIT
+
+## Query IR 的拓扑图
+本文档中的拓扑图使用 mermaid 格式生成，具体格式如下：
+1. 每个pipeline 对应一个 subgraph， pipeline 的 父子关系使用红色连接线表示
+2. 每个算子，包括 Source， Operators， Sink 对应一个 node. 使用"变量名:算子名"作为 label， 例如："user_filter: filter"， 各个算子之间的数据流使用连接线表示
+3. exchange_sender 与 exchange_receiver 之间的连线使用虚线，表示数据交换，其他的数据流使用实线。
+4. lookup_hash_table 与 build_hash_table 之间的连线使用绿线相关，表示其数据依赖关系。
+5. node 和 link 上的 label 全部使用引号包裹，以避免特殊字符的干扰。
+
+# Examples
+## Example 1: 简单查询
 ```sql
 -- table: users(id, name, birthday, email)
 select name, email from users where birthday > '1990-01-01';
 ```
 
-其对应的 qp 代码如下：
-```qp 
+其对应的 qir 代码如下：
+```qir 
 
 // type users 是一个表类型信息，用于为后面的代码提供类型检查，例如字段名是否正确，数据类型是否正确等。
 type users = table {
@@ -52,11 +103,11 @@ let pipeline1 = pipeline {
     sink = sink1
 };
 
-// graph 是一个 topology 类型，用于描述整个查询的拓扑结构，也是单个 qp 文件的最终输出结果。
+// graph 是一个 topology 类型，用于描述整个查询的拓扑结构，也是单个 qir 文件的最终输出结果。
 let graph = topology( main = pipeline1 );
 ```
 
-## 示例二
+## Example 2: simple join
 ```sql
 --- table: order_item(order_item_id: u64, order_date: date, product_id: u32, quantity: u32, amount: decimal)
 --- table: product(product_id: u32, product_name: string, category_id: u32)
@@ -65,8 +116,8 @@ select product_name, sum(quantity), sum(amount)
 from order_item join product on order_item.product_id = product.product_id
 group by product_name
 ```
-对应的 qp 代码如下：
-```qp
+对应的 qir 代码如下：
+```qir
 // 定义表结构类型
 type order_item = table {
     name = "order_item",
@@ -128,7 +179,7 @@ let pipeline2 = pipeline( source = order_item_source, operators = [ht_lookup1], 
 let graph = topology(main = pipeline2);
 ```
 
-## 示例3
+## Example 3: join with filter
 ```sql
 -- table: order_item(order_item_id, order_date, user_id, product_id, quantity, amount)
 -- table: users(user_id, name, sex, province, city)
@@ -138,7 +189,7 @@ where order_date >= '2025-01-1' and sex = 'F'
 group by province, city
 ```
 
-```qp
+```qir
 // 定义表结构类型
 type order_item = table {
     name = "order_item",
@@ -232,7 +283,7 @@ let pipeline2 = pipeline(
 let graph = topology(main = pipeline2);
 ```
 
-## 示例4 
+## Example 4: join with filter and having 
 ```sql
 -- table: order_item(order_item_id, order_date, user_id, product_id, quantity, amount)
 -- table: users(user_id, name, sex, province, city)
@@ -243,8 +294,8 @@ group by province, city
 having count(order_item_id) > 10
 ```
 
-等价的 qp 代码：
-```qp
+等价的 qir 代码：
+```qir
 // 定义表结构类型（与示例3相同）
 type order_item = table {
     name = "order_item",
@@ -364,7 +415,7 @@ graph TD
     hb1 -.->|"哈希表依赖"| hl1
 ```
 
-## 示例5: 分布式 join 
+## Example 5: shuffle join
 ```sql
 -- big table join, using shuffle join
 -- table: order_item(order_item_id, order_date, user_id, product_id, quantity, amount)
@@ -376,8 +427,8 @@ group by province, city
 having count(order_item_id) > 10
 ```
 
-对应的 qp 代码如下：
-```qp
+对应的 qir 代码如下：
+```qir
 // 定义表结构类型
 type order_item = table {
     name = "order_item",
@@ -594,7 +645,7 @@ graph TD
    Pipeline4 -->|"Shuffle(province/city)"| Pipeline5
 ```     
 
-## 示例6：使用窗口函数
+## Example 6: 窗口函数
 ```sql
 -- table data(Plant: string, Date: date, mwh: f64)
 SELECT "Plant", "Date",
@@ -608,8 +659,8 @@ FROM "data"
 ORDER BY 1, 2;
 ```
 
-对应的 qp 代码为：
-```qp
+对应的 qir 代码为：
+```qir
 type data = table {
     name = "data",
     columns = [
@@ -688,16 +739,63 @@ graph TD
     style Pipeline2 stroke:#F00
 ```
 
-TODO: qp 为窗口函数提供了不同的计算模式：
+TODO: qir 为窗口函数提供了不同的计算模式：
 - as an operator: 支持流式的处理，可以满足对大数据集进行窗口计算。
 - as an sink: 不支持流式计算，需要将整个数据集放入内存进行窗口计算。
 这一块稍后补充。
+
+
+# 核心概念
+
+## topology
+topology 是一个完整的查询计划，由一个或多个 pipeline 组成。pipeline 之间可以有依赖关系,形成一个有向无环图(DAG)。
+
+## pipeline
+pipeline 是一个数据处理流水线，由 source、operators 和 sink 组成:
+- source: 数据源算子，负责从存储系统（或者接收外部的请求）读取数据
+- operators: 处理算子序列，对数据进行转换、过滤、聚合等操作
+- sink: 汇聚算子，负责将处理结果写入存储系统或传递给下一个 pipeline
+
+pipeline 支持 partition，每个partition 中的算子的数据流动是在单个线程中，以小批量的方式进行流动，这种方式可以充分发挥 CPU 的 
+向量化计算和 Cache 带来的性能提升。
+
+pipeline 支持分区时，sink 节点可以是分区的，或者是汇聚的。
+
+pipeline 之间可以有依赖关系:
+- [ ] `pipeline_a` 可以依赖于 `pipeline_b`: b 执行完成后，a 才能开始执行
+- [ ] `pipeline_a[partition_1]` 可以依赖于 `pipeline_b[partition_1]`: b 的 partition_1 执行完成后，a 的 partition_1 才能开始执行
+
+
+## operator
+operator 是数据处理算子，每个算子都有明确定义的输入和输出类型。常见的算子包括:
+- filter: 过滤算子
+- join: 关联算子
+- aggregation: 聚合算子
+- sort: 排序算子
+- window: 窗口算子
+
+## source
+source 是数据源算子，负责从存储系统读取数据。常见的 source 包括:
+- scan: 表扫描算子
+- exchange_receiver: 数据交换接收算子
+
+## sink
+sink 是汇聚算子，负责将处理结果写入存储系统或传递给下一个 pipeline。常见的 sink 包括:
+- identity_sink: 恒等汇聚算子
+- exchange_sender: 数据交换发送算子
+- build_hash_table: 哈希表构建算子
+
+## partition
+partition 是数据分区概念，用于并行和分布式计算:
+- 数据可以按照指定的字段进行分区
+- 不同分区可以并行处理
+- 分区之间可以通过 exchange 算子进行数据交换
 
 # 算子说明
 
 1. scan 表扫描算子，用于从表中读取数据
    - name: 表名
-   - table: 表类型定义，optional, 用于类型检查
+   - table: 表类型定义，optional， 用于类型检查
    - output: 需要输出的字段列表
  
 2. filter 对输入 DataFrame 进行过滤操作
@@ -713,7 +811,7 @@ TODO: qp 为窗口函数提供了不同的计算模式：
    - ht: 哈希表，由 build_hash_table 构建
    - input: 输入 DataFrame
    - key: 关联字段
-   - output: 输出字段列表，格式为 [[lookup_side_fields], [build_side_fields]]
+   - output: 输出字段列表，格式为 [[lookup_side_fields]， [build_side_fields]]
    - join_type: 连接类型，inner/left/right/semi/anti-semi/crossjoin 等
 
 5. hash_aggregator 哈希聚合算子
@@ -737,12 +835,12 @@ TODO: qp 为窗口函数提供了不同的计算模式：
 9. exchange_sender 发送端算子，用于分布式计算
    - input: 输入 DataFrame
    - partition_by: 分区字段列表
-   - shuffle_mode: "HASH" for hash shuffle, "GLOBAL" for collect all data to one partition
+   - shuffle_mode: "HASH" for hash shuffle， "GLOBAL" for collect all data to one partition
 
 10. exchange_receiver 接收端算子，用于分布式计算
-    - input: 输入 DataFrame, 对应于 exchange_sender 算子 
+    - input: 输入 DataFrame， 对应于 exchange_sender 算子 
     - partition_by: 分区字段列表，需要与 exchange_sender 算子的 partition_by 一致
-    - shuffle_mode: "HASH" for hash shuffle, "GLOBAL" for collect all data to one partition，需要与 exchange_sender 算子的 shuffle_mode 一致
+    - shuffle_mode: "HASH" for hash shuffle， "GLOBAL" for collect all data to one partition，需要与 exchange_sender 算子的 shuffle_mode 一致
 
 11. window_aggr 带补充
 
@@ -754,28 +852,20 @@ TODO: qp 为窗口函数提供了不同的计算模式：
 
 13. topology 查询拓扑结构
     - main: 主流水线
-    - 说明: 用于描述整个查询的拓扑结构，是单个 qp 文件的最终输出
+    - 说明: 用于描述整个查询的拓扑结构，是单个 qir 文件的最终输出
 
 
 当进行大数据量的表之间 join 时，通常会使用 shuffle join 算法，即将数据按照 join key 进行哈希分区，然后将相同 key 的数据发送到同一个节点进行 join 操作。
 
-# Query Plan 的拓扑图生成规范
-1. 生成 mermaid 格式生成拓扑图
-2. 每个pipeline 对应一个 subgraph, pipeline 的 父子关系使用红色连接线表示
-3. 每个算子，包括 Source, Operators, Sink 对应一个 node. 使用"变量名:算子名"作为 label, 例如："user_filter: filter", 各个算子之间的数据流使用连接线表示
-4. exchange_sender 与 exchange_receiver 之间的连线使用虚线，表示数据交换，其他的数据流使用实线。
-5. lookup_hash_table 与 build_hash_table 之间的连线使用绿线相关，表示其数据依赖关系。
-6. node 和 link 上的 label 全部使用引号包裹，以避免特殊字符的干扰。
-
 # TODO
 1. 支持 `SELECT sum(amount), sum(amount) FILTER (region != 'north') FROM sales;`
 2. 支持 `SELECT first(amount ORDER BY date ASC) FROM sales;`
-3. 支持更灵活的窗口函数能力。
-   ```sql
-   SELECT "Plant", "Date",
-        SUM("MWh") OVER (
-            PARTITION BY "Plant"
-            FILTER "Date" >= date_ymd( year(current."Date"), 1, 1) AND "Date" <= current."DATE" ) AS "MWh-年累计"
-   FROM "Generation History"
-   ORDER BY 1, 2;
-   ```
+3. 提供更多基础时间窗口能力（date based）
+   - 年/年季/年月/年周/年月日 多种层次结构
+   - 前期、同期
+   - （年/月/周）累计、前期累计、同期累计
+   - 滑动、滚动窗口
+4. 提供更多时序窗口能力（time based） 
+5. 支持更灵活的窗口函数能力。
+   - `SUM(X) OVER (PARTITION BY expr ORDER BY expr RANGE BETWEEN expr AND expr)`
+   - `SUM(X) OVER (PARTITION BY expr ORDER BY expr WHERE expr)`
