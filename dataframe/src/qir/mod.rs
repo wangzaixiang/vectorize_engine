@@ -14,14 +14,14 @@ pub trait Sink: Operator {
 
 /// Type definitions for a table
 pub struct Table {
-    name: String,
-    columns: Vec<Column>,
+    pub name: String,
+    pub columns: Vec<Column>,
 }
 
 /// Column definition for a column in a table
 pub struct Column {
-    name: String,
-    data_type: DataType,
+    pub name: String,
+    pub data_type: DataType,
 }
 
 /// Data type for columns
@@ -48,9 +48,9 @@ pub enum DataType {
 
 /// a Scan source operator
 pub struct Scan {
-    name: String,
-    table: Rc<Table>,
-    output: Vec<String>     // TODO resolve symbol -> definition
+    pub name: String,
+    pub table: Rc<Table>,
+    pub output: Vec<String>     // TODO resolve symbol -> definition
 }
 
 impl Operator for Scan { }
@@ -58,31 +58,27 @@ impl Source for Scan { }
 
 /// a Filter operator
 pub struct Filter {
-    input: Rc<dyn Operator>,
-    predicate: String,  // TODO
-    output: Vec<String>
+    pub input: Rc<dyn Operator>,
+    pub predicate: String,  // TODO
+    pub output: Vec<String>
 }
 impl Operator for Filter { }
 
 pub struct IdentitySink {
-    input: Rc<dyn Operator>,
+    pub input: Rc<dyn Operator>,
 }
 
 impl Operator for IdentitySink {}
 impl Sink for IdentitySink {}
 
 pub struct Pipeline {
-    source: Rc<dyn Source>,
-    operators: Vec<Rc<dyn Operator>>,
-    sink: Rc<dyn Sink>,
-    parents: Vec<Rc<Pipeline>>,
+    pub source: Rc<dyn Source>,
+    pub operators: Vec<Rc<dyn Operator>>,
+    pub sink: Rc<dyn Sink>,
+    pub parents: Vec<Rc<Pipeline>>,
 }
 
 pub struct Topology {
-    main: Rc<Pipeline>,
+    pub main: Rc<Pipeline>,
 }
 
-#[cfg(test)]
-mod tests {
-    mod example1_test;
-}

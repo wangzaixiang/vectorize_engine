@@ -1,4 +1,5 @@
 use crate::qir::{Column, DataType, Table};
+use std::rc::Rc;
 
 /// Macro for creating a table
 /// 
@@ -57,7 +58,7 @@ macro_rules! scan {
     } => {
         Scan {
             name: $name.to_string(),
-            table: std::rc::Rc::new($table),
+            table: $table,
             output: vec![ $($field.to_string()),* ]
         }
     }
@@ -82,7 +83,7 @@ macro_rules! filter {
         output: [ $($field:expr),* $(,)? ]
     } => {
         Filter {
-            input: std::rc::Rc::new($input),
+            input: $input,
             predicate: $predicate.to_string(),
             output: vec![ $($field.to_string()),* ]
         }
@@ -102,12 +103,11 @@ macro_rules! identity {
     {
         input: $input:expr
     } => {
-        IdentitySink {
-            input: std::rc::Rc::new($input)
-        }
+        Rc::new(IdentitySink {
+            input: $input
+        })
     }
 }
-
 
 /// 宏用于创建 pipeline
 /// 
@@ -125,29 +125,15 @@ macro_rules! identity {
 macro_rules! pipeline {
     {
         source: $source:expr,
-        $(operators: [ $($operator:expr),* $(,)? ],)?
+        operators: [ $($operator:expr),* $(,)? ],
         sink: $sink:expr
         $(, parent: $parent:expr)?
     } => {
         Pipeline {
-            source: std::rc::Rc::new($source),
-            operators: vec![ $($(std::rc::Rc::new($operator)),*)? ],
-            sink: std::rc::Rc::new($sink),
-            parents: vec![ $($(std::rc::Rc::new($parent)),*)? ],
-        }
-    };
-
-    // 不带 operators 的简化版本
-    {
-        source: $source:expr,
-        sink: $sink:expr
-        $(, parent: $parent:expr)?
-    } => {
-        Pipeline {
-            source: std::rc::Rc::new($source),
-            operators: vec![],
-            sink: std::rc::Rc::new($sink),
-            parents: vec![ $($(std::rc::Rc::new($parent)),*)? ],
+            source: $source,
+            operators: vec![ $($operator),* ],
+            sink: $sink,
+            parents: vec![]
         }
     }
 }
