@@ -17,9 +17,9 @@ use crate::qir::{Column, DataType, Table};
 /// 
 #[macro_export]
 macro_rules! column {
-    { name = $name:expr, data_type = $type:ident } => {
+    { name = x:expr, data_type = $type:ident } => {
         Column {
-            name: $name.to_string(),
+            name: x.to_string(),
             data_type: DataType::$type,
         }
     }
