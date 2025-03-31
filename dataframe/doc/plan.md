@@ -52,6 +52,9 @@
 
 
 # TODO LIST
-- [ ] pass test: build QIR for example-1
+- [ ] TDD test case: build QIR for example-1 using rust macro
+  - 自引用的复杂对象树构建，加深对 lifetime 和 self-referential struct 的理解。
+  - 使用 Rc<T> 还是 &T?
+  - 学习 rust macro
 - [ ] 熟悉 arrow api，尝试创建 `users(id, name, birthday, email) ` dataset
 - [ ] pass test: run a simple pipeline for example-1 (no partition)
