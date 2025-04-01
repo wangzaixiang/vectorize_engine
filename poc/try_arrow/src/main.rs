@@ -1,3 +1,4 @@
+use std::any::Any;
 use arrow::array::{Int32Array, StringArray, Date32Array, Array};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::record_batch::RecordBatch;
@@ -6,6 +7,7 @@ use arrow::ipc::reader::{read_footer_length, FileDecoder, FileReader};
 use std::fs::File;
 use std::sync::Arc;
 use std::io::Cursor;
+use std::ptr;
 use arrow::buffer::Buffer;
 use arrow::ipc::{root_as_footer, Block};
 use arrow::ipc::convert::fb_to_schema;
@@ -107,7 +109,7 @@ fn test4() {
 
 #[test]
 fn test5() {
-    // 使用 zero-copy 方式读取
+    // 使用 zero-copy 方式读取文件
     let file = File::open("users.arrow").unwrap();
     let mmap = unsafe { memmap2::Mmap::map(&file).expect("failed to mmap file") };
     let bytes = bytes::Bytes::from_owner(mmap);
@@ -121,7 +123,15 @@ fn test5() {
     // Create the Arrays and print them
     for i in 0..decoder.num_batches() {
         let batch = decoder.get_batch(i).unwrap().expect("failed to read batch");
+        let col0 = batch.column(0);
+        let x = col0.as_any();
+        // get ptr of x
+        let x_ptr = x as *const dyn Any as *const u8;
+        let x_ptr2: &Int32Array = unsafe { &*(x_ptr as *const Int32Array) };
         let col1 = batch.column(0).as_any().downcast_ref::<Int32Array>().unwrap();
+        let col2 = batch.column(1).as_any().downcast_ref::<StringArray>().unwrap();
+        println!("{:?}", col1);
+        println!("{:?}", col2);
         assert_eq!(3, batch.num_rows());
         println!("Batch {i}\n{}", pretty_format_batches(&[batch]).unwrap());
     }
@@ -156,7 +166,7 @@ impl IPCBufferDecoder {
         // convert to Vec from the flatbuffers Vector to avoid having a direct dependency on flatbuffers
         let batches = footer
             .recordBatches()
-            .map(|b| b.iter().copied().collect())
+            .map(|b| b.iter().copied().collect() )
             .unwrap_or_default();
 
         Self {
