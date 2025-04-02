@@ -1,3 +1,5 @@
+mod another_array;
+
 use std::any::Any;
 use arrow::array::{Int32Array, StringArray, Date32Array, Array};
 use arrow::datatypes::{DataType, Field, Schema};
@@ -7,7 +9,6 @@ use arrow::ipc::reader::{read_footer_length, FileDecoder, FileReader};
 use std::fs::File;
 use std::sync::Arc;
 use std::io::Cursor;
-use std::ptr;
 use arrow::buffer::Buffer;
 use arrow::ipc::{root_as_footer, Block};
 use arrow::ipc::convert::fb_to_schema;

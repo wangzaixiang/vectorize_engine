@@ -95,5 +95,17 @@ graph TD
 ## Questions
 1. how to debug flatbuffers code? 
 2. how to debug &dyn Array?
+   调试 &dyn T 时无法查看到具体的数据结构，很不便于调试。如果 ROR 能对具有 Any 的trait 支持查看具体的数据结构，那么调试会方便很多。
 3. how to debug rust code with expression evaluation?
-4. learn datafusion
+   目前 ROR 的调试环境中，evaluation expression 支持很差，与官网的描述不符。不知道是 bug 还是使用方式不对。这对调试时理解数据结构很不方便。
+4. 消除对 Arc 的恐惧？
+5. learn datafusion
+6. PrimitiveArray<Int32Type> vs PrimitiveArray<i32>
+
+   ```
+    let i32s: PrimaryArray<Int32Type> = Int32Array::from(vec![1, 2, 3, 4, 5]);   // current arrow-array type
+    // or
+    let i32s: PrimaryArray<i32> = Int32Array::from(vec![1, 2, 3, 4, 5]);        // a better way
+   ```
+   感受一下 Rust 的类型系统。
+7. how datafusion different from duckdb, polars, etc.
