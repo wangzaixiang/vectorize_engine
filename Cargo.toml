@@ -1,4 +1,6 @@
 [workspace]
-members = [ "dataframe", "poc/*",
-    "prototype"]
+members = [ "dataframe",
+    "poc/*",
+    "playgrounds/*",
+]
 resolver = "2"

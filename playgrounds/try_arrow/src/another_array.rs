@@ -1,12 +1,12 @@
 use arrow::datatypes::DataType;
 
-trait PrimaryArrayType {
+trait PrimaryType {
     const DATA_TYPE: arrow::datatypes::DataType;
 }
 
 macro_rules! impl_primary_type {
     ($t:ty, $dt:expr) => {
-        impl PrimaryArrayType for $t {
+        impl PrimaryType for $t {
             const DATA_TYPE: arrow::datatypes::DataType = $dt;
         }
     };
@@ -25,12 +25,12 @@ impl_primary_type!(f32, arrow::datatypes::DataType::Float32);
 impl_primary_type!(f64, arrow::datatypes::DataType::Float64);
 
 /// a better way to define a PrimaryArray than arrow::array::PrimitiveArray
-struct PrimaryArray<T: PrimaryArrayType> {
+struct PrimaryArray<T: PrimaryType> {
     data_type: DataType,
     data: Vec<T>,
 }
 
-impl <T: PrimaryArrayType> PrimaryArray<T> {
+impl <T: PrimaryType> PrimaryArray<T> {
     fn new(data: Vec<T>) -> Self {
         Self {
             data_type: T::DATA_TYPE, // the same as data_type: <T as PrimaryArrayType>::DATA_TYPE,
