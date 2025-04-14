@@ -58,3 +58,7 @@
   - 学习 rust macro
 - [ ] 熟悉 arrow api，尝试创建 `users(id, name, birthday, email) ` dataset
 - [ ] pass test: run a simple pipeline for example-1 (no partition)
+- [ ] a simple example for learn the workflow of datafusion
+      ```sql select a, sum(b) from t1 left join t2 where t1.c = ? group by a```
+- [ ] 是否可以直接构建出最终的 physical plan? 来执行 query 4-5，能否达到最优的性能？
+- [ ] async 调用的性能相比 duckdb 是否有损耗？

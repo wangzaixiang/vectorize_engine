@@ -5,3 +5,5 @@ edition = "2024"
 
 [dependencies]
 chrono = "0.4.40"
+serde_json = { version = "1.0", features = ["preserve_order"] }
+regex = "1.10"

@@ -8,6 +8,3 @@ arrow = "54.3.1"
 arrow-cast = { version = "54.3.1", features = ["prettyprint"] }
 memmap2 = "0.9.5"
 bytes = "1.10.1"
-
-[profile.dev]
-debug = true
