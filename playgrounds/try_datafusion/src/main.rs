@@ -1,5 +1,7 @@
 use datafusion::functions_aggregate::sum::sum;
+use datafusion::logical_expr::LogicalPlanBuilder;
 use datafusion::prelude::*;
+use datafusion::prelude::Partitioning::RoundRobinBatch;
 
 #[tokio::main]
 async fn main() -> datafusion::error::Result<()>{
@@ -94,16 +96,31 @@ async fn test_case45_via_sql() -> datafusion::error::Result<()> {
 }
 
 async fn test_sql2() -> datafusion::error::Result<()> {
-    let ctx = SessionContext::new();
+    let config = SessionConfig::new().with_repartition_joins(false);
+
+    let ctx = SessionContext::new_with_config(config);
     prepare_dataset(&ctx).await?;
 
-    let time0 = std::time::Instant::now();
-    let df = ctx.sql("select s.order_date, sum(si.amount) from sale_items si
-     left join sale_orders s on si.sale_order_id = s.sale_order_id group by s.order_date").await?;
+    // create external table users stored as csv location 'playgrounds/try_datafusion/data/users.csv';
+    // create external table access_log stored as csv location 'playgrounds/try_datafusion/data/access_log.csv';
+    let users = ctx.read_csv("playgrounds/try_datafusion/data/users.csv", CsvReadOptions::new()).await?
+        .repartition(RoundRobinBatch(1))?;
+    let access_log = ctx.read_csv("playgrounds/try_datafusion/data/access_log.csv", CsvReadOptions::new()).await?
+        .repartition(RoundRobinBatch(1))?;
 
-    df.clone().explain(false, true)?.show().await?;
-    let time1 = std::time::Instant::now();
-    // let time1 = time0.clone();
+    // ctx.register_table("users", users.into_view())?;
+    // ctx.register_table("access_log", access_log.into_view())?;
+
+    let time0 = std::time::Instant::now();
+    // let df = ctx.sql("select s.order_date, sum(si.amount) from sale_items si
+    //  left join sale_orders s on si.sale_order_id = s.sale_order_id group by s.order_date limit 10").await?;
+
+    // let df = ctx.sql("select * from access_log l left join users u on l.`user` = u.name").await?;
+    let df = access_log.join(users, JoinType::Left, &["user"], &["name"], None)?;
+
+    df.clone().explain(true, false)?.show().await?;
+    // let time1 = std::time::Instant::now();
+    let time1 = time0.clone();
 
     df.show().await?;
     let time2 = std::time::Instant::now();
