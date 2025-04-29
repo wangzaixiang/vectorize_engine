@@ -5,6 +5,8 @@ edition = "2024"
 
 [dependencies]
 #datafusion = "46.0.1"
-datafusion = { path = "/Users/wangzaixiang/workspaces/github.com/datafusion/datafusion/core", version = "46.0.1"}
+datafusion = { path = "/Users/wangzaixiang/workspaces/github.com/datafusion/datafusion/core", version = "47.0.0"}
+datafusion-datasource = { path = "/Users/wangzaixiang/workspaces/github.com/datafusion/datafusion/datasource", version = "47.0.0" }
 tokio = { version = "1.44.1", features = ["rt-multi-thread"] }
 clap = { version = "4.5.36", features = ["derive"] }
+rand = "0.8.5"

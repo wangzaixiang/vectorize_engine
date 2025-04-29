@@ -106,7 +106,7 @@ async fn prepare_dataset(ctx: &SessionContext) -> datafusion::error::Result<()> 
 
 async fn test_case45_via_sql() -> datafusion::error::Result<()> {
     // let ctx = SessionContext::new();
-    let config = SessionConfig::new().with_repartition_joins(false); //
+    let config = SessionConfig::new().with_repartition_joins(false); // env datafusion.optimizer.repartition_joins in datafusion-cli or SQL set
     let ctx = SessionContext::new_with_config(config);
     prepare_dataset(&ctx).await?;
 
@@ -167,14 +167,14 @@ async fn test_sql2() -> datafusion::error::Result<()> {
 
     // create external table users stored as csv location 'playgrounds/try_datafusion/data/users.csv';
     // create external table access_log stored as csv location 'playgrounds/try_datafusion/data/access_log.csv';
-    let _users = ctx.read_csv("playgrounds/try_datafusion/data/users.csv", CsvReadOptions::new()).await?;
-    let _access_log = ctx.read_csv("playgrounds/try_datafusion/data/access_log.csv", CsvReadOptions::new()).await?;
+    let users = ctx.read_csv("playgrounds/try_datafusion/data/users.csv", CsvReadOptions::new()).await?;
+    let access_log = ctx.read_csv("playgrounds/try_datafusion/data/access_log.csv", CsvReadOptions::new()).await?;
 
     // let df = ctx.sql("select s.order_date, sum(si.amount) from sale_items si
     //  left join sale_orders s on si.sale_order_id = s.sale_order_id group by s.order_date limit 10").await?;
 
-    let df = ctx.sql("select * from access_log l left join users u on l.`user` = u.name").await?;
-    // let df = access_log.join(users, JoinType::Left, &["user"], &["name"], None)?;
+    // let df = ctx.sql("select * from access_log l left join users u on l.`user` = u.name").await?;
+    let df = access_log.join(users, JoinType::Left, &["user"], &["name"], None)?;
     try_explain(&df).await?;
 
     let time0 = std::time::Instant::now();
@@ -184,6 +184,7 @@ async fn test_sql2() -> datafusion::error::Result<()> {
 
     Ok(())
 }
+
 
 async fn test_case45_via_dataframe() -> datafusion::error::Result<()> {
     let ctx = SessionContext::new();
