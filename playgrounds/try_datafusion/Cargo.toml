@@ -10,3 +10,4 @@ datafusion-datasource = { path = "/Users/wangzaixiang/workspaces/github.com/data
 tokio = { version = "1.44.1", features = ["rt-multi-thread"] }
 clap = { version = "4.5.36", features = ["derive"] }
 rand = "0.8.5"
+chrono = "0.4.41"
