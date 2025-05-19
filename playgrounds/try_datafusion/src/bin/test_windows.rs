@@ -23,9 +23,23 @@ async fn test_sum_1() -> Result<()> {
     Ok(())
 }
 
-/// case 2: BoundedWindowAggExec + SlidingAggregateWindowExpr + Accumulator(sliding)
+/// WindowAggExec + SlidingAggregateWindowExpr + Accumulator
 #[tokio::test]
 async fn test_sum_2() -> Result<()> {
+    let mut ctx = SessionContext::new();
+    _ = prepare(&mut ctx).await?;
+
+    let df2 = ctx.sql("select *, sum(amount) over (partition by product_id rows between current row and unbounded following) as amounts1 from t1").await?;
+
+    df2.show().await?;
+    Ok(())
+}
+
+
+
+/// BoundedWindowAggExec + SlidingAggregateWindowExpr + Accumulator(sliding)
+#[tokio::test]
+async fn test_sum_3() -> Result<()> {
     let mut ctx = SessionContext::new();
     _ = prepare(&mut ctx).await?;
 
@@ -38,7 +52,7 @@ async fn test_sum_2() -> Result<()> {
 
 /// BoundedWindowAggExec + PlainAggregateWindowExpr + Accumulator
 #[tokio::test]
-async fn test_sum_3() -> Result<()> {
+async fn test_sum_4() -> Result<()> {
     let mut ctx = SessionContext::new();
     _ = prepare(&mut ctx).await?;
 
