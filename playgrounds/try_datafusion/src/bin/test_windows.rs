@@ -8,9 +8,9 @@ use datafusion_datasource::memory::MemorySourceConfig;
 use datafusion_datasource::source::DataSourceExec;
 use rand::RngCore;
 
-fn main(){
-
-}
+// fn main(){
+//
+// }
 
 /// WindowAggExec + PlainAggregateWindowExpr + Accumulator
 #[tokio::test]
@@ -38,13 +38,16 @@ async fn test_sum_2() -> Result<()> {
 
 
 /// BoundedWindowAggExec + SlidingAggregateWindowExpr + Accumulator(sliding)
-#[tokio::test]
-async fn test_sum_3() -> Result<()> {
-    let mut ctx = SessionContext::new();
+#[tokio::main]
+// async fn test_sum_3() -> Result<()> {
+async fn main() -> Result<()> {
+    let config = SessionConfig::new().with_batch_size(8);
+    let mut ctx = SessionContext::new_with_config(config);
+    // let mut ctx = SessionContext::new();
     _ = prepare(&mut ctx).await?;
 
-    let df2 = ctx.sql("select *, \
-    sum(amount) over (partition by product_id order by order_date rows 1 preceding) as amounts1 from t1").await?;
+    let df2 = ctx.sql("select *,sum(amount) over (partition by product_id order by order_date rows 1 preceding) as amounts1 from t1").await?;
+    df2.clone().explain(false, false)?.show().await?;
 
     _ = df2.show().await;
     Ok(())
@@ -142,54 +145,11 @@ async fn prepare(ctx: &mut SessionContext) -> Result<()> {
         ]
     )?;
 
-    ctx.register_batch("t1", batch)?;
-    Ok(())
-}
+    let batches: Vec<RecordBatch> = (0..10).map( |_| batch.clone() ).collect();
 
-async fn _test1() -> Result<()> {
+    let df = ctx.read_batches( batches )? ;
+    ctx.register_table("t1", df.into_view())?;
 
-    let config = SessionConfig::new().with_target_partitions(1);
-    let ctx = SessionContext::new_with_config(config);
-    let dir = "/Users/wangzaixiang/workspaces/wangzaixiang/mpp_test/datafusion";
-    _ = ctx.register_parquet("sale_orders", format!("{}/sale_orders.parquet", dir), ParquetReadOptions::default()).await;
-    _ = ctx.register_parquet("sale_items", format!("{}/sale_items.parquet", dir), ParquetReadOptions::default()).await;
-    _ = ctx.register_parquet("purchase_orders", format!("{}/purchase_orders.parquet", dir), ParquetReadOptions::default()).await;
-    _ = ctx.register_parquet("purchase_items", format!("{}/purchase_items.parquet", dir), ParquetReadOptions::default()).await;
-    _ = ctx.register_parquet("customers", format!("{}/customers.parquet", dir), ParquetReadOptions::default()).await;
-    _ =  ctx.register_parquet("customer_tags", format!("{}/customer_tags.parquet", dir), ParquetReadOptions::default()).await;
-    _ = ctx.register_parquet("suppliers", format!("{}/suppliers.parquet", dir), ParquetReadOptions::default()).await;
-    _ = ctx.register_parquet("tags", format!("{}/tags.parquet", dir), ParquetReadOptions::default()).await;
-
-    // duckdb
-    //  select so.order_date, SUM(si.amount) as amount,
-    //  	SUM(SUM(si.amount)) over (
-    //  		order by so.order_date
-    //  		range between to_days( cast( datediff('day',date_trunc('month',so.order_date),  so.order_date)  as integer) ) preceding
-    //  			and current row
-    //  		)
-    //  from sale_items si left join sale_orders so on so.sale_order_id = si.sale_order_id
-    //  where so.order_date <= date'2022-01-31'
-    //  group by so.order_date;
-
-    let df = ctx.sql(" select so.order_date, SUM(si.amount) as amount,
- 	SUM(SUM(si.amount)) over (
- 		order by so.order_date
- 		-- range between (so.order_date - date_trunc('month',so.order_date) ) preceding
- 		rows between 3 preceding
- 			and current row
- 		),
-    SUM(SUM(si.amount)) over (
-       order by so.order_date desc
-       rows between 3 preceding and current row
-    )
- from sale_items si left join sale_orders so on so.sale_order_id = si.sale_order_id
- -- where so.order_date <= date'2022-01-31'
- group by so.order_date
- order by so.order_date;
-").await?;
-
-    df.clone().explain(true, false)?.show().await?;
-    df.show().await?;
-
+    // ctx.register_batch("t1", batch)?;
     Ok(())
 }
