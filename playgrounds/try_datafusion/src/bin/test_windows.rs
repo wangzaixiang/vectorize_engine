@@ -4,6 +4,7 @@ use datafusion::arrow::array::{Date32Array, Float32Array, Float64Array, Int32Arr
 use datafusion::arrow::datatypes::{DataType, Field, Schema};
 use datafusion::error::{DataFusionError, Result};
 use datafusion::prelude::{ParquetReadOptions, SessionConfig, SessionContext};
+use datafusion::sql::sqlparser::ast::Ident;
 use datafusion_datasource::memory::MemorySourceConfig;
 use datafusion_datasource::source::DataSourceExec;
 use rand::RngCore;
@@ -46,9 +47,12 @@ async fn main() -> Result<()> {
     // let mut ctx = SessionContext::new();
     _ = prepare(&mut ctx).await?;
 
-    let df2 = ctx.sql("select *,sum(amount) over (partition by product_id order by order_date rows 1 preceding) as amounts1 from t1").await?;
-    df2.clone().explain(false, false)?.show().await?;
+    let sql = "select *, sum(amount) over (order by order_date range between interval '1 days' preceding and interval '1 days' following) as slide_amounts from t1";
+    // let sql = "select *,sum(amount) over (partition by product_id order by order_date rows 1 preceding) as amounts1 from t1";
+    let df2 = ctx.sql(sql).await?;
+    // df2.clone().explain(false, false)?.show().await?;
 
+    println!("sql:{}", sql);
     _ = df2.show().await;
     Ok(())
 }
@@ -121,31 +125,46 @@ async fn prepare(ctx: &mut SessionContext) -> Result<()> {
 
     let mut rng = rand::thread_rng();
 
-    let range = 0..10;
-    let id_array: Vec<u64> = range.clone().map(|i| i).collect();
-    let product_id_array: Vec<u32> = vec![1, 2, 3, 4, 2, 3, 3, 4, 4, 4];
-    let order_date_array: Vec<i32> = vec![ parse_date("2025-01-01")?, parse_date("2025-01-01")?,
-                                           parse_date("2025-01-01")?, parse_date("2025-01-01")?,
-                                           parse_date("2025-01-02")?, parse_date("2025-01-02")?,
-                                           parse_date("2025-01-02")?, parse_date("2025-01-03")?,
-                                           parse_date("2025-01-03")?, parse_date("2025-01-04")?,
-    ];
+    struct Record {
+        id: u64,
+        product_id: u32,
+        order_date: i32,
+        quantity: u32,
+        amount: f64,
+    }
+    impl Record {
+        fn new(id: u64, product_id: u32, order_date: i32, quantity: u32, amount: f64) -> Self {
+            Record {
+                id, product_id, order_date, quantity, amount
+            }
+        }
+    }
 
-    let quantity_array: Vec<u32> = vec![2,1,3,4,1,2,2,3,2,1];
-    let amount_array: Vec<f64> = vec![15.0, 20.0, 25.0, 30.0, 18.0, 38.0, 25.0, 13.0, 87.0 ,67.0];
+    let records: Vec<Record> = vec![
+      Record::new(1, 1, parse_date("2024-01-01")?, 1, 10.0 ),
+      Record::new(2, 2, parse_date("2024-01-02")?, 2, 20.0 ),
+      Record::new(3, 3, parse_date("2024-01-02")?, 3, 30.0 ),
+      Record::new(4, 4, parse_date("2024-01-04")?, 4, 40.0 ),
+      Record::new(5, 2, parse_date("2024-01-06")?, 5, 50.0 ),
+      Record::new(6, 3, parse_date("2024-01-07")?, 6, 60.0 ),
+      Record::new(7, 4, parse_date("2024-01-08")?, 7, 70.0 ),
+      Record::new(8, 3, parse_date("2024-01-08")?, 8, 80.0 ),
+      Record::new(9, 4, parse_date("2024-01-09")?, 9, 90.0 ),
+      Record::new(10, 4, parse_date("2024-01-12")?, 10, 100.0 ),
+    ];
 
     let batch = RecordBatch::try_new(
         schema.clone(),
         vec![
-            Arc::new(UInt64Array::from(id_array)),
-            Arc::new(UInt32Array::from(product_id_array)),
-            Arc::new(Date32Array::from(order_date_array)),
-            Arc::new(UInt32Array::from(quantity_array)),
-            Arc::new(Float64Array::from(amount_array)),
+            Arc::new(UInt64Array::from( records.iter().map(|r|r.id).collect::<Vec<u64>>() )),
+            Arc::new(UInt32Array::from( records.iter().map(|r|r.product_id).collect::<Vec<u32>>() )),
+            Arc::new(Date32Array::from( records.iter().map(|r|r.order_date).collect::<Vec<i32>>() )),
+            Arc::new(UInt32Array::from( records.iter().map(|r|r.quantity).collect::<Vec<u32>>() )),
+            Arc::new(Float64Array::from( records.iter().map(|r|r.amount).collect::<Vec<f64>>() )),
         ]
     )?;
 
-    let batches: Vec<RecordBatch> = (0..10).map( |_| batch.clone() ).collect();
+    let batches: Vec<RecordBatch> = (0..1).map( |_| batch.clone() ).collect();
 
     let df = ctx.read_batches( batches )? ;
     ctx.register_table("t1", df.into_view())?;
