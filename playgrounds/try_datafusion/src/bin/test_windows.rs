@@ -141,16 +141,16 @@ async fn prepare(ctx: &mut SessionContext) -> Result<()> {
     }
 
     let records: Vec<Record> = vec![
-      Record::new(1, 1, parse_date("2024-01-01")?, 1, 10.0 ),
-      Record::new(2, 2, parse_date("2024-01-02")?, 2, 20.0 ),
-      Record::new(3, 3, parse_date("2024-01-02")?, 3, 30.0 ),
-      Record::new(4, 4, parse_date("2024-01-04")?, 4, 40.0 ),
-      Record::new(5, 2, parse_date("2024-01-06")?, 5, 50.0 ),
-      Record::new(6, 3, parse_date("2024-01-07")?, 6, 60.0 ),
-      Record::new(7, 4, parse_date("2024-01-08")?, 7, 70.0 ),
-      Record::new(8, 3, parse_date("2024-01-08")?, 8, 80.0 ),
-      Record::new(9, 4, parse_date("2024-01-09")?, 9, 90.0 ),
-      Record::new(10, 4, parse_date("2024-01-12")?, 10, 100.0 ),
+      Record::new(0, 1, parse_date("2024-01-01")?, 1, 10.0 ),
+      Record::new(1, 2, parse_date("2024-01-02")?, 2, 20.0 ),
+      Record::new(2, 3, parse_date("2024-01-02")?, 3, 30.0 ),
+      Record::new(3, 4, parse_date("2024-01-04")?, 4, 40.0 ),
+      Record::new(4, 2, parse_date("2024-01-06")?, 5, 50.0 ),
+      Record::new(5, 3, parse_date("2024-01-07")?, 6, 60.0 ),
+      Record::new(6, 4, parse_date("2024-01-08")?, 7, 70.0 ),
+      Record::new(7, 3, parse_date("2024-01-08")?, 8, 80.0 ),
+      Record::new(8, 4, parse_date("2024-01-09")?, 9, 90.0 ),
+      Record::new(9, 4, parse_date("2024-01-12")?, 10, 100.0 ),
     ];
 
     let batch = RecordBatch::try_new(
