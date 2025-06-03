@@ -37,6 +37,8 @@ mod tests {
             println!("i32s[0]: {:?}", i32s.value(0));
         }
         println!("{:?}", i32s);
+        let x = i32s.to_data();
+        println!("{:?}", x);
 
         let arr2 = Int32Array::from(vec![Some(1), None, Some(3), None, Some(5)]);
         println!("{:?}", arr2);
