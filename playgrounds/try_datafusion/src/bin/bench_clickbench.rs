@@ -1,3 +1,4 @@
+use std::fmt::format;
 use std::sync::Arc;
 use datafusion::common::DataFusionError;
 use datafusion::datasource::file_format::parquet::ParquetFormat;
@@ -44,26 +45,27 @@ async fn main() -> Result<()> {
 
 // SQL24
 // df: 40s, scan without filter
-// duckdb: 8s
+// duckdb: 8.89s
 
 async fn prepare_context() -> Result<SessionContext> {
     let config = SessionConfig::new().with_target_partitions(1);
     let context = SessionContext::new_with_config(config);
 
     let multi: bool = std::env::var("MULTI").or::<DataFusionError>(Ok("false".to_string()))?.parse().or::<DataFusionError>(Ok(false))?;
+    let data_dir = "/Volumes/wangzx-sandisk/workspaces/github.com/datafusion-duckdb-benchmark/";
 
     if multi == false {
         // single file
         println!("single parquet mode");
         context.register_parquet("hits",
-                                 "/Users/wangzaixiang/workspaces/github.com/datafusion-duckdb-benchmark/clickbench/hits.parquet",
+                                 &format!("{}/clickbench/hits.parquet", data_dir),
                                  ParquetReadOptions::default()).await?;
     }
     else {
         // multi file
         println!("multiple parquet mode");
         context.register_listing_table("hits",
-                                       "/Users/wangzaixiang/workspaces/github.com/datafusion-duckdb-benchmark/clickbench/hits_multi",
+                                       &format!("{}/clickbench/hits_multi", data_dir),
                                        ListingOptions::new(Arc::new(
                                            ParquetFormat::default()
                                        )).with_file_extension(".parquet"),
