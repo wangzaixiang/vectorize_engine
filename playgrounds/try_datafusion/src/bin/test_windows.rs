@@ -1,13 +1,9 @@
 use std::sync::Arc;
 use chrono::NaiveDate;
-use datafusion::arrow::array::{Date32Array, Float32Array, Float64Array, Int32Array, Int64Array, RecordBatch, UInt32Array, UInt64Array};
+use datafusion::arrow::array::{Date32Array, Float64Array, RecordBatch, UInt32Array, UInt64Array};
 use datafusion::arrow::datatypes::{DataType, Field, Schema};
 use datafusion::error::{DataFusionError, Result};
-use datafusion::prelude::{ParquetReadOptions, SessionConfig, SessionContext};
-use datafusion::sql::sqlparser::ast::Ident;
-use datafusion_datasource::memory::MemorySourceConfig;
-use datafusion_datasource::source::DataSourceExec;
-use rand::RngCore;
+use datafusion::prelude::{SessionConfig, SessionContext};
 
 // fn main(){
 //
@@ -107,7 +103,7 @@ async fn test_ntile_1() -> Result<()> {
 fn parse_date(str: &str) -> Result<i32> {
     let date = NaiveDate::parse_from_str(str, "%Y-%m-%d")
         .map_err(|e| DataFusionError::Execution(e.to_string()))?;
-    let days = date.signed_duration_since(NaiveDate::from_ymd(1970,1,1)).num_days();
+    let days = date.signed_duration_since(NaiveDate::from_ymd_opt(1970,1,1).unwrap()).num_days();
     Ok(days as i32)
 }
 
@@ -123,7 +119,7 @@ async fn prepare(ctx: &mut SessionContext) -> Result<()> {
         Field::new("amount", DataType::Float64, false),
     ]));
 
-    let mut rng = rand::thread_rng();
+    // let mut rng = rand::thread_rng();
 
     struct Record {
         id: u64,

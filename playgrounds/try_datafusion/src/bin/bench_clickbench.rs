@@ -6,6 +6,14 @@ use datafusion::datasource::listing::ListingOptions;
 use datafusion::prelude::{ParquetReadOptions, SessionConfig, SessionContext};
 use datafusion::error::Result;
 
+// Prepare dataset
+//
+// this program requires files under datafusion-duckdb-benchmark/clickbench/hits.parquet
+//  original project: https://github.com/wangzaixiang/datafusion-duckdb-benchmark.git
+// and runs clickbench/setup.sh to download the hits dataset from https://datasets.clickhouse.com/hits_compatible
+// make sure checkout the project, runs clickbench/setup.sh, and create a symbolic link under links/datafusion-duckdb-benchmark
+const DIR_DATAFUSION_DUCKDB_BENCHMARK: &str = "links/datafusion-duckdb-benchmark";
+
 #[tokio::main]
 async fn main() -> Result<()> {
 
@@ -52,20 +60,19 @@ async fn prepare_context() -> Result<SessionContext> {
     let context = SessionContext::new_with_config(config);
 
     let multi: bool = std::env::var("MULTI").or::<DataFusionError>(Ok("false".to_string()))?.parse().or::<DataFusionError>(Ok(false))?;
-    let data_dir = "/Volumes/wangzx-sandisk/workspaces/github.com/datafusion-duckdb-benchmark/";
 
     if multi == false {
         // single file
         println!("single parquet mode");
         context.register_parquet("hits",
-                                 &format!("{}/clickbench/hits.parquet", data_dir),
+                                 &format!("{}/clickbench/hits.parquet", DIR_DATAFUSION_DUCKDB_BENCHMARK),
                                  ParquetReadOptions::default()).await?;
     }
     else {
         // multi file
         println!("multiple parquet mode");
         context.register_listing_table("hits",
-                                       &format!("{}/clickbench/hits_multi", data_dir),
+                                       &format!("{}/clickbench/hits_multi", DIR_DATAFUSION_DUCKDB_BENCHMARK),
                                        ListingOptions::new(Arc::new(
                                            ParquetFormat::default()
                                        )).with_file_extension(".parquet"),

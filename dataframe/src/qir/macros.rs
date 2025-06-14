@@ -18,9 +18,9 @@ use std::rc::Rc;
 /// 
 #[macro_export]
 macro_rules! column {
-    { name = x:expr, data_type = $type:ident } => {
+    { name = $x:expr, data_type = $type:ident } => {
         Column {
-            name: x.to_string(),
+            name: $x.to_string(),
             data_type: DataType::$type,
         }
     }
